@@ -11,7 +11,7 @@
  *    vaade: 15min                       # 15min | tund (algvaade)
  * ===================================================================== */
 
-const EH_VERSION = "2.4.0";
+const EH_VERSION = "2.5.0";
 const EH_PAEVAD = ["E", "T", "K", "N", "R", "L", "P", "Püha"];
 const EH_SOOVITUSED = ["#00FFFF", "#0078FF", "#B400B4", "#00FF00", "#FFFF00", "#FF8000", "#FF0000", "#FFFFFF", "#808080"];
 
@@ -373,6 +373,7 @@ class ElektrihindCard extends HTMLElement {
         <div class="pealkiri">${this._config.title} · seaded</div>
         <button class="sulge" aria-label="Sulge">✕</button>
       </div>
+      ${this._versiooniRida()}
 
       <div class="kast"><h3>Praegu ${typeof p === "object" ? p.aeg : ""}</h3>
         <table>${typeof p === "object" ? p.html : p}</table>
@@ -450,6 +451,8 @@ class ElektrihindCard extends HTMLElement {
     // ---- nupud ----
     const on = (sel, f) => root.querySelectorAll(sel).forEach((b) => b.addEventListener("click", () => f(b)));
     on(".sulge", () => this._sulgeSeaded());
+    on("[data-kontrolli]", () => this._kontrolliUuendusi());
+    on("[data-uuenda]", () => { this._seadedAvatud = false; this._uuenda(); });
     on("[data-tyhista]", () => this._sulgeSeaded());
     on("[data-lisa]", () => {
       if (S.tasud.length >= 12) return;
@@ -589,6 +592,30 @@ class ElektrihindCard extends HTMLElement {
     return false;
   }
 
+  _versiooniRida() {
+    const h = this._hass;
+    const praegu = (h.states["sensor.elektrihind_versioon"] || {}).state || EH_VERSION;
+    const uus = (h.states["sensor.elektrihind_uusim_versioon"] || {}).state;
+    const uuem = uus && /^\d+\.\d+\.\d+$/.test(uus) && this._versioonUuem(uus, praegu);
+    const olek = this._kontrollib ? "kontrollin…"
+      : uuem ? `saadaval ${uus}` : uus && /^\d/.test(uus) ? "uusim" : "teadmata";
+    return `<div class="versioon"><span>Versioon <b>${praegu}</b> · ${olek}</span>
+      <span>${uuem && h.user && h.user.is_admin ? `<button class="p" data-uuenda>Uuenda ${uus}</button>` : ""}
+      <button data-kontrolli ${this._kontrollib ? "disabled" : ""}>Kontrolli uuendusi</button></span></div>`;
+  }
+
+  async _kontrolliUuendusi() {
+    this._kontrollib = true;
+    this._renderSeaded();
+    try {
+      await this._hass.callService("homeassistant", "update_entity",
+        { entity_id: "sensor.elektrihind_uusim_versioon" });
+      await new Promise((ok) => setTimeout(ok, 1500));   // oota, kuni uus olek jõuab kaardini
+    } catch (e) { /* olek jääb "teadmata" */ }
+    this._kontrollib = false;
+    if (this._seadedAvatud) this._renderSeaded();
+  }
+
   _uuenduseRiba() {
     const h = this._hass;
     const uus = h.states["sensor.elektrihind_uusim_versioon"];
@@ -631,6 +658,15 @@ class ElektrihindCard extends HTMLElement {
   _stiil() {
     return `<style>
       ha-card { padding: 16px; }
+      .versioon { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;
+        font-size: 13px; color: var(--secondary-text-color); margin: 0 0 12px; padding: 8px 10px; border-radius: 8px;
+        background: var(--secondary-background-color, rgba(127,127,127,.1)); }
+      .versioon b { color: var(--primary-text-color); }
+      .versioon span:last-child { display: flex; gap: 6px; }
+      .versioon button { font: inherit; font-size: 12px; cursor: pointer; background: none; color: var(--primary-text-color);
+        border: 1px solid var(--divider-color); border-radius: 6px; padding: 5px 10px; }
+      .versioon button.p { background: var(--primary-color); border-color: var(--primary-color); color: var(--text-primary-color, #fff); }
+      .versioon button:disabled { opacity: .5; }
       .uuendus { display: flex; gap: 12px; align-items: center; justify-content: space-between; margin: -4px 0 12px;
         padding: 10px 12px; border-radius: 10px; font-size: 13px;
         background: var(--secondary-background-color, rgba(127,127,127,.12)); color: var(--primary-text-color); }

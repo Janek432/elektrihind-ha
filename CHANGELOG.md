@@ -1,5 +1,10 @@
 # Muudatused
 
+## 2.5.0 – 2026-11-10
+- Hinnakaardi ⚙ seadete ülaosas on paigaldatud versioon, nupp **Kontrolli uuendusi** ja
+  (kui uuem on olemas) **Uuenda**.
+- Uuenduste kontroll möödub GitHubi vahemälust, uus versioon on kohe näha.
+
 ## 2.4.0 – 2026-11-10
 - Seadmed, odavaim aeg: igal kellaaja vahemikul on oma **max s/kWh** lahter. Vahemikust ei kasutata
   veerandtunde, mis on sellest kallimad. Üldine maksimumhind jääb alles – kehtivad mõlemad.

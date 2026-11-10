@@ -1,7 +1,8 @@
 {
-  "versioon": "2.4.0",
+  "versioon": "2.5.0",
   "taaskaivitus": false,
   "muudatused": [
-    "Odavaim aeg: igal kellaaja vahemikul oma maksimumhind (üldine maksimumhind jääb alles)"
+    "Hinnakaardi ⚙ seadetes versioon ja nupp „Kontrolli uuendusi“",
+    "Uuenduste kontroll möödub GitHubi vahemälust – uus versioon on kohe näha"
   ]
 }

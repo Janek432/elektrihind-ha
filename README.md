@@ -25,7 +25,7 @@ seadmete juhtimine hinna järgi ja aku laadimisplaan. Hinnaandmed tulevad avalik
 
 4. Profiilis lülita sisse **Advanced mode**. **Settings → Tools → YAML → Check configuration**,
    seejärel **Settings → System → Restart**.
-5. **Settings → Dashboards → ⋮ → Resources → Add resource**: `/local/elektrihind-card.js?v=2.4.0`,
+5. **Settings → Dashboards → ⋮ → Resources → Add resource**: `/local/elektrihind-card.js?v=2.5.0`,
    tüüp **JavaScript module**.
 6. Dashboardil **Edit → Add card → By card**, otsi „Elektrihind“ ja lisa kaardid.
 
@@ -39,6 +39,8 @@ hinnakaardile riba **„Uuendus saadaval“** koos muudatustega. Nupp **Uuenda**
 3. uuendab dashboardi ressursi versiooninumbrit ja värskendab lehte.
 
 Kõik seaded (tasud, seadmed, aku) on salvestatud Home Assistantis, mitte failides – uuendus neid ei muuda.
+
+Kohe kontrollimiseks: hinnakaardi **⚙ → Kontrolli uuendusi**.
 
 Käsitsi: **Settings → Automations & scenes → Scripts → „Elektrihind: uuenda GitHubist“ → Run**.
 
