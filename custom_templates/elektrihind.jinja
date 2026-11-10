@@ -1,0 +1,370 @@
+{#- =====================================================================
+    Elektrihind – lõpphinna arvutus Home Assistantile
+    Sama loogika mis Nordpool_v2 (Wemos) ja Android-äpis:
+      lõpphind = börs (+KM) + kõik sel hetkel kehtivad tasud (+KM kui km=true)
+    Tasu kehtib, kui on=true, päevamask lubab (riigipühal ainult 8. märk)
+    ja kell on vahemikus al..kuni (al > kuni = üle kesköö).
+
+    Tasusid muudetakse dashboardi kaardil (⚙). Kaart salvestab need olemisse
+    sensor.elektrihind_seaded. Allolevad on vaikeväärtused, mida kasutatakse
+    siis, kui kaardilt pole midagi salvestatud (või vajutati "Taasta vaikimisi").
+    ===================================================================== -#}
+
+{#- ===== SEADED – sama JSON-skeem mis Wemose /api/seaded ======================
+    Oma seaded saad otse Wemoselt: ava http://<wemose-ip>/api/seaded ja kleebi
+    sisu siia (km, borsKm, piirid, varvid, tasud). url ja varviV võivad jääda.
+    p = 8 märki: E T K N R L P Püha  (1 = kehtib)
+    ============================================================================ -#}
+{%- macro vaikeseaded() -%}
+{{ {
+  "km": 24,
+  "borsKm": true,
+  "piirid": [10, 15, 20, 25, 30, 35],
+  "varvid": ["#00FFFF", "#0078FF", "#B400B4", "#00FF00", "#FFFF00", "#FF8000", "#FF0000"],
+  "tasud": [
+    {"nimi": "Võrgutasu päev",          "s": 4.58, "km": false, "on": true, "p": "11111000", "al": 7,  "kuni": 22},
+    {"nimi": "Võrgutasu öö",            "s": 2.60, "km": false, "on": true, "p": "11111000", "al": 22, "kuni": 7},
+    {"nimi": "Võrgutasu L, P ja pühad", "s": 2.60, "km": false, "on": true, "p": "00000111", "al": 0,  "kuni": 24},
+    {"nimi": "Taastuvenergia tasu",     "s": 1.04, "km": false, "on": true, "p": "11111111", "al": 0,  "kuni": 24},
+    {"nimi": "Elektriaktsiis",          "s": 0.26, "km": false, "on": true, "p": "11111111", "al": 0,  "kuni": 24},
+    {"nimi": "Varustuskindluse tasu",   "s": 0.94, "km": false, "on": true, "p": "11111111", "al": 0,  "kuni": 24},
+    {"nimi": "Müüja marginaal",         "s": 0.62, "km": false, "on": true, "p": "11111111", "al": 0,  "kuni": 24}
+  ]
+} | to_json }}
+{%- endmacro -%}
+
+{#- Kehtivad seaded: kaardilt salvestatud, muidu vaikeväärtused -#}
+{%- macro seaded() -%}
+{%- set s = state_attr('sensor.elektrihind_seaded', 'seaded') -%}
+{%- if s is string -%}{%- set s = s | from_json(default=none) -%}{%- endif -%}
+{%- if s is mapping and s.tasud is defined and s.piirid is defined and s.varvid is defined -%}
+{{ s | to_json }}
+{%- else -%}
+{{ vaikeseaded() }}
+{%- endif -%}
+{%- endmacro -%}
+
+{#- Lihavõttepühapäev (Gregoriuse kalender) -> "YYYY-MM-DD" -#}
+{%- macro lihavotted(y) -%}
+{%- set a = y % 19 -%}{%- set b = y // 100 -%}{%- set c = y % 100 -%}
+{%- set d = b // 4 -%}{%- set e = b % 4 -%}
+{%- set f = (b + 8) // 25 -%}{%- set g = (b - f + 1) // 3 -%}
+{%- set h = (19 * a + b - d - g + 15) % 30 -%}
+{%- set i = c // 4 -%}{%- set k = c % 4 -%}
+{%- set l = (32 + 2 * e + 2 * i - h - k) % 7 -%}
+{%- set m = (a + 11 * h + 22 * l) // 451 -%}
+{%- set kuu = (h + l - 7 * m + 114) // 31 -%}
+{%- set paev = ((h + l - 7 * m + 114) % 31) + 1 -%}
+{{ '%04d-%02d-%02d' | format(y, kuu, paev) }}
+{%- endmacro -%}
+
+{#- Eesti riigipüha? lt = kohalik datetime, lh = lihavõttepühapäeva date -#}
+{%- macro _puha(lt, lh) -%}
+{%- set vahe = (lt.date() - lh).days -%}
+{{ lt.strftime('%m-%d') in ['01-01', '02-24', '05-01', '06-23', '06-24', '08-20', '12-24', '12-25', '12-26']
+   or vahe in [-2, 0, 49] }}
+{%- endmacro -%}
+
+{#- Hinnavahemiku number (0 .. värvide arv-1), nagu Wemose hinnaVahemik() -#}
+{%- macro vahemik(hind) -%}
+{%- set c = seaded() | from_json -%}
+{{ c.piirid | select('le', hind | float) | list | count }}
+{%- endmacro -%}
+
+{%- macro varv(hind) -%}
+{%- set c = seaded() | from_json -%}
+{{ c.varvid[c.piirid | select('le', hind | float) | list | count] }}
+{%- endmacro -%}
+
+{#- read = [{"timestamp": unix, "price": €/MWh}, ...]
+    Tagastab JSON-i: [{"ts", "algus", "bors", "hind", "puha"}, ...]  (s/kWh) -#}
+{%- macro lopphinnad(read) -%}
+{%- set c = seaded() | from_json -%}
+{%- set k = 1 + c.km / 100 -%}
+{%- set ns = namespace(out=[], aasta=0, lh=none) -%}
+{%- for r in read -%}
+  {%- set lt = r.timestamp | int | as_datetime | as_local -%}
+  {%- if lt.year != ns.aasta -%}
+    {%- set ns.aasta = lt.year -%}
+    {%- set ns.lh = strptime(lihavotted(lt.year) | trim, '%Y-%m-%d').date() -%}
+  {%- endif -%}
+  {%- set puha = _puha(lt, ns.lh) | trim == 'True' -%}
+  {%- set bit = 7 if puha else lt.weekday() -%}
+  {%- set s = namespace(v = r.price / 10 * (k if c.borsKm else 1)) -%}
+  {%- for t in c.tasud if t.on | default(true) -%}
+    {%- set p = t.p if t.p | length == 8 else t.p ~ t.p[6] -%}
+    {%- set al = t.al | default(0) -%}{%- set kuni = t.kuni | default(24) -%}
+    {%- if p[bit] == '1' and ((al < kuni and lt.hour >= al and lt.hour < kuni)
+                            or (al > kuni and (lt.hour >= al or lt.hour < kuni))) -%}
+      {%- set s.v = s.v + t.s * (k if t.km | default(false) else 1) -%}
+    {%- endif -%}
+  {%- endfor -%}
+  {%- set ns.out = ns.out + [{
+        "ts": r.timestamp | int,
+        "algus": lt.isoformat(),
+        "bors": (r.price / 10) | round(3),
+        "hind": s.v | round(3),
+        "puha": puha }] -%}
+{%- endfor -%}
+{{ ns.out | to_json }}
+{%- endmacro -%}
+
+{#- =====================================================================
+    Seadmete juhtimine hinna järgi (veerandtunni täpsusega)
+    reegel = {"id", "nimi", "entity", "on", "viis": "odavad"|"piir",
+              "jaotus": "plokk"   (odavad: üks järjestikune plokk)
+                      | "hajus"   (kõige odavamad veerandtunnid, võivad olla eraldi)
+                      | "eelista" (plokk, kui selle keskmine on hajutatust kallim
+                                   kõige rohkem "vahe" s/kWh, muidu hajutatud),
+              "vahe": X  (eelista: lubatud keskmise hinna vahe, s/kWh),
+              "minplokk": M  (eelista: kui ühe ploki asemel tuleb mitu tükki,
+                              on iga tükk vähemalt M veerandtundi; 1 = hajutatud),
+              (vanem "jarjest": true/false = plokk/hajus)
+              "piir": X   (piir: sees, kui lõpphind <= X s/kWh),
+              "aknad": [{"al", "kuni", "tunde"}, ...]}
+      al/kuni = kellaaeg tundides, veerandtunni sammuga (16.25 = 16:15);
+                al > kuni = üle kesköö (nt 22–7), siis iga öö kohta eraldi.
+      odavad: igas vahemikus "tunde" tundi kõige odavamat aega (0.25 sammuga);
+      piir:   seade on sees ainult vahemike sees ("tunde" ei kasutata).
+      "mintunde": N (piir: vähemalt N tundi igas vahemikus – kui piirist allapoole
+                     jääb vähem, lisatakse odavaimad veerandtunnid),
+      "maks": X   (odavad: valitud ajast jäetakse välja veerandtunnid, mis on kallimad kui X),
+      "varu": "oo"|"aeg"|"sees"|"valjas"  (kui hinnad puuduvad: öötariifi ajal /
+              "varuaknad" kellaaegadel [{"al", "kuni"}] / alati / mitte),
+      "ule": {"tyyp": "sees"|"paus", "kuni": unix}  (käsitsi kaardilt, kuni ajani),
+      "kasitsi_h": N  (kui seadet lülitatakse ise – HA-s või seadme nupust –, ei puutu
+                       automaatika seda N tundi; 0 = ei arvesta)
+    Vanem kuju {"al", "kuni", "tunde"} ilma aknadeta töötab samuti.
+    Tagastab JSON-i: [{"id", "entity", "on", "ts": [sees-veerandtunnid]}]
+    ("kas praegu sees" arvutab automatiseerimine ts-nimekirjast)
+    ===================================================================== -#}
+
+{#- Odavaim valik: k veerandtundi tükkidena, iga tükk vähemalt m järjest
+    (h = hinnad ajajärjekorras). Täpne dünaamiline planeerimine:
+    olek = (valitud arv j, praeguse tüki pikkus r, kuni m). m = 1 annab
+    täpselt odavaimad veerandtunnid. Tagastab valitud indeksid JSON-ina. -#}
+{%- macro tykid(h, k, m) -%}
+{%- set n = h | count -%}
+{%- set m = [[m | int(1), 1] | max, k] | min -%}
+{%- set W = m + 1 -%}
+{%- set INF = 1.0e18 -%}
+{%- set d = namespace(c=[0.0] + [INF] * ((k + 1) * W - 1), bp=[]) -%}
+{%- for i in range(n) -%}
+  {%- set p = h[i] -%}
+  {%- set u = namespace(c=[], b=[]) -%}
+  {%- for j in range(k + 1) -%}
+    {#- r = 0: i jäetakse vahele; lubatud, kui eelmine tükk puudub või on >= m -#}
+    {%- set a = d.c[j * W] -%}{%- set e = d.c[j * W + m] -%}
+    {%- set u.c = u.c + [[a, e] | min] -%}{%- set u.b = u.b + [0 if a <= e else m] -%}
+    {%- for r in range(1, W) -%}
+      {%- if j == 0 -%}
+        {%- set u.c = u.c + [INF] -%}{%- set u.b = u.b + [0] -%}
+      {%- elif r < m -%}
+        {%- set u.c = u.c + [d.c[(j - 1) * W + r - 1] + p] -%}{%- set u.b = u.b + [r - 1] -%}
+      {%- else -%}
+        {%- set a = d.c[(j - 1) * W + m - 1] -%}{%- set e = d.c[(j - 1) * W + m] -%}
+        {%- set u.c = u.c + [([a, e] | min) + p] -%}{%- set u.b = u.b + [m - 1 if a <= e else m] -%}
+      {%- endif -%}
+    {%- endfor -%}
+  {%- endfor -%}
+  {%- set d.c = u.c -%}
+  {%- set d.bp = d.bp + [u.b] -%}
+{%- endfor -%}
+{#- tagasi: lõpus peab viimane tükk olema >= m või puuduma -#}
+{%- set t = namespace(j=k, r=(0 if d.c[k * W] <= d.c[k * W + m] else m), sel=[]) -%}
+{%- for i in range(n - 1, -1, -1) -%}
+  {%- set src = d.bp[i][t.j * W + t.r] -%}
+  {%- if t.r > 0 -%}{%- set t.sel = [i] + t.sel -%}{%- set t.j = t.j - 1 -%}{%- endif -%}
+  {%- set t.r = src -%}
+{%- endfor -%}
+{{ t.sel | to_json }}
+{%- endmacro -%}
+{%- macro plaan(reeglid, read) -%}
+{%- set paevad = read | map(attribute='algus') | map('regex_replace', 'T.*$', '') | unique | list -%}
+{%- set ns = namespace(out=[]) -%}
+{%- for r in reeglid -%}
+  {%- set aknad = r.aknad if r.aknad is defined and r.aknad
+        else [{'al': r.al | default(0), 'kuni': r.kuni | default(24), 'tunde': r.tunde | default(0)}] -%}
+  {%- set jaotus = r.jaotus | default('plokk' if r.jarjest | default(true) else 'hajus') -%}
+  {%- set sees = namespace(ts=[]) -%}
+  {%- for w in aknad -%}
+    {%- set al = ((w.al | float(0)) * 60) | round | int -%}
+    {%- set kuni = ((w.kuni | float(24)) * 60) | round | int -%}
+    {#- akna veerandtunnid; üle kesköö akna hommik kuulub eelmise päeva aknasse -#}
+    {%- set a = namespace(l=[]) -%}
+    {%- for x in read -%}
+      {%- set t = (x.algus[11:13] | int) * 60 + (x.algus[14:16] | int) -%}
+      {%- set d = x.algus[:10] -%}
+      {%- if (al < kuni and t >= al and t < kuni) or (al > kuni and t >= al) -%}
+        {%- set a.l = a.l + [{'ts': x.ts, 'hind': x.hind, 'aken': d}] -%}
+      {%- elif al > kuni and t < kuni -%}
+        {%- set i = paevad.index(d) -%}
+        {%- set a.l = a.l + [{'ts': x.ts, 'hind': x.hind, 'aken': paevad[i - 1] if i > 0 else 'eelmine'}] -%}
+      {%- endif -%}
+    {%- endfor -%}
+    {%- if r.viis == 'piir' -%}
+      {#- hinnapiir; kui piirist allapoole jääb vähem kui "mintunde", lisatakse odavaimad -#}
+      {%- set mk = ((r.mintunde | default(0) | float(0)) * 4) | round | int -%}
+      {%- for aken in a.l | map(attribute='aken') | unique | list -%}
+        {%- set s = a.l | selectattr('aken', 'eq', aken) | list -%}
+        {%- set alla = s | selectattr('hind', 'le', r.piir | float(0)) | list -%}
+        {%- if alla | count < mk -%}{%- set alla = (s | sort(attribute='hind'))[:mk] -%}{%- endif -%}
+        {%- set sees.ts = sees.ts + (alla | map(attribute='ts') | list) -%}
+      {%- endfor -%}
+    {%- else -%}
+      {%- set k = ((w.tunde | float(0)) * 4) | round | int -%}
+      {%- for aken in a.l | map(attribute='aken') | unique | list if k > 0 -%}
+        {%- set s = a.l | selectattr('aken', 'eq', aken) | sort(attribute='ts') | list -%}
+        {%- if s | count <= k -%}
+          {%- set sees.ts = sees.ts + (s | map(attribute='ts') | list) -%}
+        {%- else -%}
+          {%- set hajus = (s | sort(attribute='hind'))[:k] -%}
+          {%- if jaotus == 'eelista' and (r.minplokk | default(1) | int(1)) > 1 -%}
+            {%- set t2 = namespace(l=[]) -%}
+            {%- for i in tykid(s | map(attribute='hind') | list, k, r.minplokk) | from_json -%}
+              {%- set t2.l = t2.l + [s[i]] -%}
+            {%- endfor -%}
+            {%- set hajus = t2.l -%}
+          {%- endif -%}
+          {%- if jaotus == 'hajus' -%}
+            {%- set sees.ts = sees.ts + (hajus | map(attribute='ts') | list) -%}
+          {%- else -%}
+            {#- odavaim järjestikune k veerandtunni plokk -#}
+            {%- set h = s | map(attribute='hind') | list -%}
+            {%- set b = namespace(i=0, v=none) -%}
+            {%- for i in range((s | count) - k + 1) -%}
+              {%- set v = h[i:i + k] | sum -%}
+              {%- if b.v is none or v < b.v -%}{%- set b.i = i -%}{%- set b.v = v -%}{%- endif -%}
+            {%- endfor -%}
+            {%- set lisa = (b.v - (hajus | map(attribute='hind') | sum)) / k -%}
+            {%- if jaotus == 'plokk' or lisa <= r.vahe | float(0) -%}
+              {%- set sees.ts = sees.ts + (s[b.i:b.i + k] | map(attribute='ts') | list) -%}
+            {%- else -%}
+              {%- set sees.ts = sees.ts + (hajus | map(attribute='ts') | list) -%}
+            {%- endif -%}
+          {%- endif -%}
+        {%- endif -%}
+      {%- endfor -%}
+    {%- endif -%}
+  {%- endfor -%}
+  {%- set ts = sees.ts | unique | sort -%}
+  {#- odavaim aeg: maksimumhind – kallimaid veerandtunde ei kasutata -#}
+  {%- if r.viis != 'piir' and r.maks is defined and r.maks is number -%}
+    {%- set ts = read | selectattr('ts', 'in', ts) | selectattr('hind', 'le', r.maks)
+                      | map(attribute='ts') | list -%}
+  {%- endif -%}
+  {%- set ns.out = ns.out + [{
+        'id': r.id, 'entity': r.entity, 'on': r.on | default(true), 'ts': ts,
+        'varu': r.varu | default('oo'), 'varuaknad': r.varuaknad | default([]),
+        'kasitsi_h': r.kasitsi_h | default(2),
+        'ule': r.ule | default(none) }] -%}
+{%- endfor -%}
+{{ ns.out | to_json }}
+{%- endmacro -%}
+
+{#- =====================================================================
+    Aku planeerija (ainult oma tarbimiseks, võrku ei müüda)
+    seaded c = {"maht": kWh, "minsoc": %, "maxsoc": %, "kasutegur": % (ringkasutegur),
+                "kulumine": s/kWh (aku kulumine iga akust kasutatud kWh kohta),
+                "laadimine": kW (max võrgust laadimine), "tarbimine": kW (keskmine koormus),
+                "vahetus": s (trahv iga tegevuse vahetuse eest – vähem lülitusi),
+                "praegu": praegune tegevus (trahvi arvestamiseks)}
+    Iga veerandtunni kohta valitakse üks tegevus:
+      "lae"     – maja + aku laadimine võrgust (max võimsusega)
+      "kasuta"  – aku katab maja tarbimise
+      "hoia"    – maja võtab võrgust, aku ootab kallimat aega
+    Täpne dünaamiline planeerimine üle kõigi teadaolevate hindade (täna + homme),
+    aku tase 0,5 kWh sammuga. Lõpus allesjäänud energiat väärtustatakse
+    horisondi odavama veerandiku hinnaga / kasutegur.
+    Tagastab JSON-i: {"plaan": [{"ts", "t": tegevus, "soc": % pärast, "hind"}],
+                      "ilma": s (kulu ilma akuta), "akuga": s,
+                      "kokkuhoid": € (arvestab ka aku taseme muutust perioodi jooksul)}
+    ===================================================================== -#}
+{%- macro aku_plaan(read, c, soc0, nyyd) -%}
+{%- set u = 0.5 -%}
+{%- set maht = c.maht | default(64) | float(64) -%}
+{%- set eta = (c.kasutegur | default(90) | float(90)) / 100 -%}
+{%- set kul = c.kulumine | default(1) | float(1) -%}
+{%- set smin = (maht * (c.minsoc | default(10) | float(10)) / 100 / u) | round(0, 'ceil') | int -%}
+{%- set smax = (maht * (c.maxsoc | default(95) | float(95)) / 100 / u) | round(0, 'floor') | int -%}
+{%- set cons = (c.tarbimine | default(1) | float(1)) / 4 -%}
+{%- set cu = [(cons / u) | round | int, 1] | max -%}
+{%- set lk = (c.laadimine | default(6) | float(6)) / 4 -%}
+{%- set chu = [(lk * eta / u) | round | int, 1] | max -%}
+{%- set rows = read | selectattr('ts', 'gt', nyyd - 900) | sort(attribute='ts') | list -%}
+{%- set n = rows | count -%}
+{%- set S = smax - smin -%}
+{%- if n == 0 or S <= 0 -%}
+{{ {'plaan': [], 'ilma': 0, 'akuga': 0, 'kokkuhoid': 0} | to_json }}
+{%- else -%}
+{%- set hinnad = rows | map(attribute='hind') | list -%}
+{%- set p25 = (hinnad | sort)[(n / 4) | int] -%}
+{%- set vaartus = 0.95 * p25 / eta -%}
+{%- set trahv = c.vahetus | default(2) | float(2) -%}
+{#- olek = (aku tase s, eelmine tegevus e); V[s*3+e] = minimaalne kulu alates veerandtunnist i -#}
+{%- set d = namespace(v=[], tegevus=[]) -%}
+{%- for s in range(S + 1) -%}{%- set v = -(s * u) * vaartus -%}{%- set d.v = d.v + [v, v, v] -%}{%- endfor -%}
+{%- for i in range(n - 1, -1, -1) -%}
+  {%- set p = hinnad[i] -%}
+  {%- set w = namespace(v=[], a=[]) -%}
+  {%- for s in range(S + 1) -%}
+    {%- set lisa = [chu, S - s] | min -%}
+    {%- set kasut = [cu, s] | min -%}
+    {#- tegevuste kulu ja järgmine tase: 0 hoia, 1 lae, 2 kasuta -#}
+    {%- set k0 = p * cons -%}{%- set n0 = s -%}
+    {%- set k1 = p * (cons + lisa * u / eta) -%}{%- set n1 = s + lisa -%}
+    {%- set k2 = p * (cons - kasut * u) + kul * kasut * u -%}{%- set n2 = s - kasut -%}
+    {%- for e in range(3) -%}
+      {%- set b = namespace(v=k0 + (trahv if e != 0 else 0) + d.v[n0 * 3], a=0) -%}
+      {%- if lisa > 0 -%}
+        {%- set v = k1 + (trahv if e != 1 else 0) + d.v[n1 * 3 + 1] -%}
+        {%- if v < b.v -%}{%- set b.v = v -%}{%- set b.a = 1 -%}{%- endif -%}
+      {%- endif -%}
+      {%- if kasut > 0 -%}
+        {%- set v = k2 + (trahv if e != 2 else 0) + d.v[n2 * 3 + 2] -%}
+        {%- if v < b.v -%}{%- set b.v = v -%}{%- set b.a = 2 -%}{%- endif -%}
+      {%- endif -%}
+      {%- set w.v = w.v + [b.v] -%}{%- set w.a = w.a + [b.a] -%}
+    {%- endfor -%}
+  {%- endfor -%}
+  {%- set d.v = w.v -%}
+  {%- set d.tegevus = [w.a] + d.tegevus -%}
+{%- endfor -%}
+{#- edasi: algtasemest läbi plaani -#}
+{%- set s0 = (((soc0 | float(50)) * maht / 100 / u) | round | int) - smin -%}
+{%- set e0 = {'hoia': 0, 'lae': 1, 'kasuta': 2}[c.praegu | default('hoia')] | default(0) -%}
+{%- set f = namespace(s=[[s0, 0] | max, S] | min, e=e0, out=[], ilma=0, akuga=0) -%}
+{%- set algus = f.s -%}
+{%- for i in range(n) -%}
+  {%- set p = hinnad[i] -%}
+  {%- set a = d.tegevus[i][f.s * 3 + f.e] -%}
+  {%- set f.ilma = f.ilma + p * cons -%}
+  {%- if a == 1 -%}
+    {%- set lisa = [chu, S - f.s] | min -%}
+    {%- set f.akuga = f.akuga + p * (cons + lisa * u / eta) -%}
+    {%- set f.s = f.s + lisa -%}
+  {%- elif a == 2 -%}
+    {%- set kasut = [cu, f.s] | min -%}
+    {%- set f.akuga = f.akuga + p * (cons - kasut * u) + kul * kasut * u -%}
+    {%- set f.s = f.s - kasut -%}
+  {%- else -%}
+    {%- set f.akuga = f.akuga + p * cons -%}
+  {%- endif -%}
+  {%- set f.e = a -%}
+  {%- set f.out = f.out + [{'ts': rows[i].ts, 't': ['hoia', 'lae', 'kasuta'][a],
+        'soc': (((f.s + smin) * u / maht * 100) | round(1)), 'hind': p}] -%}
+{%- endfor -%}
+{{ {'plaan': f.out, 'ilma': f.ilma | round(1), 'akuga': f.akuga | round(1),
+    'kokkuhoid': ((f.ilma - f.akuga + (f.s - algus) * u * vaartus) / 100) | round(2)} | to_json }}
+{%- endif -%}
+{%- endmacro -%}
+
+{#- Aku kehtivad seaded: kaardilt salvestatud + vaikeväärtused -#}
+{%- macro aku_seaded() -%}
+{%- set vaike = {'on': true, 'maht': 64, 'minsoc': 10, 'maxsoc': 95, 'kasutegur': 90, 'kulumine': 1,
+                 'laadimine': 6, 'tarbimine': 1, 'vahetus': 2, 'soc_andur': '', 'soc_eeldus': 50,
+                 'faasipiir': 25, 'nihe': 15} -%}
+{%- set s = state_attr('sensor.elektrihind_aku_seaded', 'seaded') -%}
+{%- if s is string -%}{%- set s = s | from_json(default=none) -%}{%- endif -%}
+{{ (dict(vaike, **s) if s is mapping else vaike) | to_json }}
+{%- endmacro -%}

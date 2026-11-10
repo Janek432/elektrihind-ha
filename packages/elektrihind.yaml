@@ -1,0 +1,442 @@
+# =====================================================================
+#  Elektrihind – Home Assistanti pakett            versioon 2.2.0
+#  https://github.com/Janek432/elektrihind-ha
+#  Hinnad: janek432.github.io/elektrihind (sama fail mis Android-äpil)
+#  Tasud ja arvutus: /config/custom_templates/elektrihind.jinja
+# =====================================================================
+
+# 1) Toorandmed GitHub Pagesist (börsihind €/MWh, 15 min, täna + homme)
+#    + uusima versiooni kontroll GitHubist (iga 6 h)
+rest:
+  - resource: https://raw.githubusercontent.com/Janek432/elektrihind-ha/main/version.json
+    scan_interval: 21600
+    timeout: 20
+    sensor:
+      - name: "Elektrihind uusim versioon"
+        unique_id: elektrihind_uusim_versioon
+        icon: mdi:github
+        value_template: "{{ value_json.versioon }}"
+        json_attributes:
+          - muudatused
+          - taaskaivitus
+
+  - resource: https://janek432.github.io/elektrihind/data/app_prices.json
+    scan_interval: 900
+    timeout: 20
+    sensor:
+      - name: "Elektrihind andmed"
+        unique_id: elektrihind_andmed
+        icon: mdi:cloud-download
+        value_template: "{{ value_json.uuendatud }}"
+        json_attributes:
+          - hinnad
+
+template:
+  # Paigaldatud versioon (muutub koos selle failiga)
+  - sensor:
+      - name: "Elektrihind versioon"
+        unique_id: elektrihind_versioon
+        icon: mdi:tag
+        state: "2.2.0"
+
+  # 0) Kaardilt salvestatud seaded (tasud, KM, värvid). Säilib taaskäivitusel.
+  - triggers:
+      - trigger: event
+        event_type: elektrihind_seaded
+    sensor:
+      - name: "Elektrihind seaded"
+        unique_id: elektrihind_seaded
+        icon: mdi:cog
+        state: "{{ now().isoformat() }}"
+        attributes:
+          seaded: "{{ trigger.event.data.seaded | default(none) }}"
+
+  # 0b) Kaardilt salvestatud juhtimisreeglid (seade + viis). Säilib taaskäivitusel.
+  - triggers:
+      - trigger: event
+        event_type: elektrihind_reeglid
+    sensor:
+      - name: "Elektrihind reeglid"
+        unique_id: elektrihind_reeglid
+        icon: mdi:playlist-edit
+        state: "{{ now().isoformat() }}"
+        attributes:
+          reeglid: "{{ trigger.event.data.reeglid | default([]) }}"
+
+  # 2) Lõpphinnad kõigile veerandtundidele (arvutatakse ainult andmete muutumisel)
+  - triggers:
+      - trigger: state
+        entity_id: sensor.elektrihind_andmed
+      - trigger: state
+        entity_id: sensor.elektrihind_seaded
+      - trigger: homeassistant
+        event: start
+      - trigger: event
+        event_type: event_template_reloaded
+      - trigger: time
+        at: "00:00:10"          # uus päev -> min/max/keskmine värskeks
+    sensor:
+      - name: "Elektrihind tabel"
+        unique_id: elektrihind_tabel
+        icon: mdi:table-clock
+        state: >
+          {{ state_attr('sensor.elektrihind_andmed', 'hinnad') | default([], true) | count }}
+        attributes:
+          # kehtivad seaded (kaardi seadete vaatele) ja värviskaala
+          seaded: >
+            {% from 'elektrihind.jinja' import seaded %}
+            {{ seaded() | from_json }}
+          piirid: >
+            {% from 'elektrihind.jinja' import seaded %}
+            {{ (seaded() | from_json).piirid }}
+          varvid: >
+            {% from 'elektrihind.jinja' import seaded %}
+            {{ (seaded() | from_json).varvid }}
+          hinnad: >
+            {% from 'elektrihind.jinja' import lopphinnad %}
+            {{ lopphinnad(state_attr('sensor.elektrihind_andmed', 'hinnad') | default([], true)) | from_json }}
+
+  # 3) Praegune lõpphind, uueneb iga veerandtunni algul
+  - triggers:
+      - trigger: time_pattern
+        minutes: "/15"
+        seconds: 2
+      - trigger: state
+        entity_id: sensor.elektrihind_tabel
+    sensor:
+      - name: "Elektrihind"
+        unique_id: elektrihind_praegu
+        icon: mdi:flash
+        unit_of_measurement: "s/kWh"
+        state_class: measurement
+        state: >
+          {% set t = now().timestamp() %}
+          {% set r = state_attr('sensor.elektrihind_tabel', 'hinnad') | default([], true)
+               | selectattr('ts', 'le', t) | list | last | default(none) %}
+          {{ r.hind if r is not none and r.ts + 900 > t else none }}
+        attributes:
+          bors: >
+            {% set t = now().timestamp() %}
+            {% set r = state_attr('sensor.elektrihind_tabel', 'hinnad') | default([], true)
+                 | selectattr('ts', 'le', t) | list | last | default(none) %}
+            {{ r.bors if r is not none and r.ts + 900 > t else none }}
+          jargmine: >
+            {% set t = now().timestamp() %}
+            {% set r = state_attr('sensor.elektrihind_tabel', 'hinnad') | default([], true)
+                 | selectattr('ts', 'gt', t) | list | first | default(none) %}
+            {{ r.hind if r is not none else none }}
+          vahemik: >
+            {% from 'elektrihind.jinja' import vahemik %}
+            {% set t = now().timestamp() %}
+            {% set r = state_attr('sensor.elektrihind_tabel', 'hinnad') | default([], true)
+                 | selectattr('ts', 'le', t) | list | last | default(none) %}
+            {{ vahemik(r.hind) | int if r is not none and r.ts + 900 > t else none }}
+          varv: >
+            {% from 'elektrihind.jinja' import varv %}
+            {% set t = now().timestamp() %}
+            {% set r = state_attr('sensor.elektrihind_tabel', 'hinnad') | default([], true)
+                 | selectattr('ts', 'le', t) | list | last | default(none) %}
+            {{ varv(r.hind) | trim if r is not none and r.ts + 900 > t else none }}
+          tana_min: >
+            {% set p = today_at().timestamp() %}
+            {% set v = state_attr('sensor.elektrihind_tabel', 'hinnad') | default([], true)
+                 | selectattr('ts', 'ge', p) | selectattr('ts', 'lt', p + 86400) | map(attribute='hind') | list %}
+            {{ v | min if v else none }}
+          tana_max: >
+            {% set p = today_at().timestamp() %}
+            {% set v = state_attr('sensor.elektrihind_tabel', 'hinnad') | default([], true)
+                 | selectattr('ts', 'ge', p) | selectattr('ts', 'lt', p + 86400) | map(attribute='hind') | list %}
+            {{ v | max if v else none }}
+          tana_keskmine: >
+            {% set p = today_at().timestamp() %}
+            {% set v = state_attr('sensor.elektrihind_tabel', 'hinnad') | default([], true)
+                 | selectattr('ts', 'ge', p) | selectattr('ts', 'lt', p + 86400) | map(attribute='hind') | list %}
+            {{ (v | sum / v | count) | round(3) if v else none }}
+          homme_olemas: >
+            {% set p = today_at().timestamp() + 86400 %}
+            {{ state_attr('sensor.elektrihind_tabel', 'hinnad') | default([], true)
+                 | selectattr('ts', 'ge', p) | list | count > 0 }}
+
+  # 4) Juhtimisplaan: millal iga seade sees on (täna + homme).
+  #    Arvutatakse ainult siis, kui hinnad või reeglid muutuvad.
+  - triggers:
+      - trigger: state
+        entity_id: sensor.elektrihind_tabel
+      - trigger: state
+        entity_id: sensor.elektrihind_reeglid
+      - trigger: homeassistant
+        event: start
+    sensor:
+      - name: "Elektrihind juhtimine"
+        unique_id: elektrihind_juhtimine
+        icon: mdi:calendar-clock
+        state: "{{ now().isoformat() }}"
+        attributes:
+          reeglid: >
+            {{ state_attr('sensor.elektrihind_reeglid', 'reeglid') | default([], true) }}
+          plaan: >
+            {% from 'elektrihind.jinja' import plaan %}
+            {{ plaan(state_attr('sensor.elektrihind_reeglid', 'reeglid') | default([], true),
+                     state_attr('sensor.elektrihind_tabel', 'hinnad') | default([], true)) | from_json }}
+
+  # 6) Aku seaded kaardilt (maht, SOC piirid, laadimisvõimsus jne). Säilib taaskäivitusel.
+  - triggers:
+      - trigger: event
+        event_type: elektrihind_aku
+    sensor:
+      - name: "Elektrihind aku seaded"
+        unique_id: elektrihind_aku_seaded
+        icon: mdi:battery-sync
+        state: "{{ now().isoformat() }}"
+        attributes:
+          seaded: "{{ trigger.event.data.seaded | default(none) }}"
+
+  # 7) Aku plaan: laadimine / kasutamine / hoidmine iga veerandtunni kohta (täna + homme).
+  #    Arvutatakse hinna- ja seadete muutusel ning kord tunnis (aku taseme järgi).
+  - triggers:
+      - trigger: state
+        entity_id: sensor.elektrihind_tabel
+      - trigger: state
+        entity_id: sensor.elektrihind_aku_seaded
+      - trigger: time_pattern
+        minutes: 2
+      - trigger: homeassistant
+        event: start
+    sensor:
+      - name: "Elektrihind aku plaan"
+        unique_id: elektrihind_aku_plaan
+        icon: mdi:battery-clock
+        state: "{{ now().isoformat() }}"
+        attributes:
+          seaded: >
+            {% from 'elektrihind.jinja' import aku_seaded %}
+            {{ aku_seaded() | from_json }}
+          soc_algus: >
+            {% from 'elektrihind.jinja' import aku_seaded %}
+            {% set c = aku_seaded() | from_json %}
+            {% set t = now().timestamp() %}
+            {% set andur = states(c.soc_andur) | float(none) if c.soc_andur else none %}
+            {% set eelmine = ((this.attributes.tulemus | default({}, true)).plaan | default([], true)
+                 | selectattr('ts', 'le', t) | selectattr('ts', 'gt', t - 900) | list | first | default(none)) %}
+            {{ andur if andur is not none else (eelmine.soc if eelmine else c.soc_eeldus | float(50)) }}
+          tulemus: >
+            {% from 'elektrihind.jinja' import aku_seaded, aku_plaan %}
+            {% set c = aku_seaded() | from_json %}
+            {% set t = now().timestamp() %}
+            {% set andur = states(c.soc_andur) | float(none) if c.soc_andur else none %}
+            {% set eelmine = ((this.attributes.tulemus | default({}, true)).plaan | default([], true)
+                 | selectattr('ts', 'le', t) | selectattr('ts', 'gt', t - 900) | list | first | default(none)) %}
+            {% set soc0 = andur if andur is not none else (eelmine.soc if eelmine else c.soc_eeldus | float(50)) %}
+            {% set c = dict(c, praegu=states('sensor.elektrihind_aku')) %}
+            {% if c.on %}
+              {{ aku_plaan(state_attr('sensor.elektrihind_tabel', 'hinnad') | default([], true), c, soc0, t) | from_json }}
+            {% else %}
+              {{ {'plaan': [], 'ilma': 0, 'akuga': 0, 'kokkuhoid': 0} }}
+            {% endif %}
+
+  # 8) Aku praegune tegevus (lae / kasuta / hoia) – Deye juhtimine loeb seda
+  - triggers:
+      - trigger: time_pattern
+        minutes: "/15"
+        seconds: 1
+      - trigger: state
+        entity_id: sensor.elektrihind_aku_plaan
+    sensor:
+      - name: "Elektrihind aku"
+        unique_id: elektrihind_aku
+        icon: mdi:battery-charging
+        state: >
+          {% set t = now().timestamp() %}
+          {% set r = state_attr('sensor.elektrihind_aku_plaan', 'tulemus') %}
+          {% set x = (r.plaan if r is mapping else []) | selectattr('ts', 'le', t)
+               | selectattr('ts', 'gt', t - 900) | list | first | default(none) %}
+          {{ x.t if x else 'puudub' }}
+        attributes:
+          soc_plaan: >
+            {% set t = now().timestamp() %}
+            {% set r = state_attr('sensor.elektrihind_aku_plaan', 'tulemus') %}
+            {% set x = (r.plaan if r is mapping else []) | selectattr('ts', 'le', t)
+                 | selectattr('ts', 'gt', t - 900) | list | first | default(none) %}
+            {{ x.soc if x else none }}
+          laadimine_kw: >
+            {% set t = now().timestamp() %}
+            {% set r = state_attr('sensor.elektrihind_aku_plaan', 'tulemus') %}
+            {% set c = state_attr('sensor.elektrihind_aku_plaan', 'seaded') or {} %}
+            {% set x = (r.plaan if r is mapping else []) | selectattr('ts', 'le', t)
+                 | selectattr('ts', 'gt', t - 900) | list | first | default(none) %}
+            {{ c.laadimine | default(0) if x and x.t == 'lae' else 0 }}
+
+  # 9) Viimased automaatika käsud seadmetele – nende järgi tuntakse ära, kui seadet lülitati ise
+  - triggers:
+      - trigger: event
+        event_type: elektrihind_kask
+    sensor:
+      - name: "Elektrihind käsud"
+        unique_id: elektrihind_kasud
+        icon: mdi:history
+        state: "{{ now().isoformat() }}"
+        attributes:
+          kasud: >
+            {% set vana = this.attributes.kasud if this.attributes.kasud is mapping else {} %}
+            {{ dict(vana, **{trigger.event.data.entity: {'sees': trigger.event.data.sees in [true, 'True', 'true'],
+                                                         'ts': now().timestamp() | round}}) }}
+
+# 5) Lülitab seadmeid plaani järgi (ainult siis, kui olek peab muutuma).
+#    Järjekord: ise lülitatud (ootab N h) > käsitsi kaardilt (Sees / Väljas kuni) >
+#    hinnaplaan > varuplaan, kui hinnad puuduvad
+#    (öötariif / valitud kellaajad / alati sees / väljas).
+automation:
+  - id: elektrihind_juhtimine
+    alias: "Elektrihind: seadmete juhtimine"
+    description: "Seaded on dashboardi kaardil Elektrihind – seadmed"
+    mode: queued
+    max: 3
+    triggers:
+      - trigger: time_pattern
+        minutes: "/1"
+        seconds: 5
+      - trigger: state
+        entity_id: sensor.elektrihind_juhtimine
+    actions:
+      - variables:
+          t: "{{ now().timestamp() }}"
+          # kas praeguse veerandtunni hind on olemas (muidu kasutatakse varuplaani)
+          hind_olemas: >
+            {{ state_attr('sensor.elektrihind_tabel', 'hinnad') | default([], true)
+               | selectattr('ts', 'le', t) | selectattr('ts', 'gt', t - 900) | list | count > 0 }}
+          # öötariif: tööpäeval 22–07, nädalavahetusel terve päev
+          oo: "{{ now().hour >= 22 or now().hour < 7 or now().weekday() >= 5 }}"
+      - repeat:
+          for_each: >
+            {{ state_attr('sensor.elektrihind_juhtimine', 'plaan') | default([], true)
+               | selectattr('on') | list }}
+          sequence:
+            - variables:
+                olek: "{{ states(repeat.item.entity) }}"
+                sees: "{{ olek not in ['off', 'unavailable', 'unknown'] }}"
+                ule: >
+                  {% set u = repeat.item.ule %}
+                  {{ u.tyyp if u is mapping and (u.kuni | float(0)) > t else '' }}
+                plaanis: >
+                  {{ repeat.item.ts | select('le', t) | select('gt', t - 900) | list | count > 0 }}
+                soov: >
+                  {% if ule == 'sees' %}{{ true }}
+                  {% elif ule == 'paus' %}{{ false }}
+                  {% elif hind_olemas %}{{ plaanis }}
+                  {% elif repeat.item.varu == 'sees' %}{{ true }}
+                  {% elif repeat.item.varu == 'valjas' %}{{ false }}
+                  {% elif repeat.item.varu == 'aeg' %}
+                    {% set mnt = now().hour * 60 + now().minute %}
+                    {% set v = namespace(sees=false) %}
+                    {% for w in repeat.item.varuaknad | default([], true) %}
+                      {% set al = ((w.al | float(0)) * 60) | round | int %}
+                      {% set ku = ((w.kuni | float(24)) * 60) | round | int %}
+                      {% if (al < ku and mnt >= al and mnt < ku) or (al > ku and (mnt >= al or mnt < ku)) %}
+                        {% set v.sees = true %}
+                      {% endif %}
+                    {% endfor %}
+                    {{ v.sees }}
+                  {% else %}{{ oo }}{% endif %}
+                # viimane automaatika käsk sellele seadmele
+                kask: >
+                  {% set k = state_attr('sensor.elektrihind_kasud', 'kasud') %}
+                  {{ k[repeat.item.entity] if k is mapping and repeat.item.entity in k else none }}
+                # seadet lülitati ise (HA-s või nupust) – automaatika ootab "kasitsi_h" tundi
+                kasitsi: >
+                  {% set h = repeat.item.kasitsi_h | default(2) | float(2) %}
+                  {% set lc = states[repeat.item.entity].last_changed if states[repeat.item.entity] else none %}
+                  {{ ule == '' and h > 0 and kask is mapping and olek not in ['unavailable', 'unknown']
+                     and sees != kask.sees and sees != soov and lc is not none
+                     and (t - as_timestamp(lc)) < h * 3600 }}
+            - choose:
+                - conditions: "{{ not kasitsi and soov and olek == 'off' }}"
+                  sequence:
+                    - action: homeassistant.turn_on
+                      continue_on_error: true
+                      target:
+                        entity_id: "{{ repeat.item.entity }}"
+                    - event: elektrihind_kask
+                      event_data:
+                        entity: "{{ repeat.item.entity }}"
+                        sees: true
+                - conditions: "{{ not kasitsi and not soov and olek not in ['off', 'unavailable', 'unknown'] }}"
+                  sequence:
+                    - action: homeassistant.turn_off
+                      continue_on_error: true
+                      target:
+                        entity_id: "{{ repeat.item.entity }}"
+                    - event: elektrihind_kask
+                      event_data:
+                        entity: "{{ repeat.item.entity }}"
+                        sees: false
+                # olek on juba õige, aga meelespeetud käsk erineb (nt lülitati ise soovitud olekusse)
+                - conditions: >
+                    {{ not kasitsi and olek not in ['unavailable', 'unknown'] and sees == soov
+                       and (kask is not mapping or kask.sees != soov) }}
+                  sequence:
+                    - event: elektrihind_kask
+                      event_data:
+                        entity: "{{ repeat.item.entity }}"
+                        sees: "{{ soov }}"
+
+# 10) Uuendamine GitHubist: laeb alla täpselt valitud versiooni (sildi v<versioon>) failid
+shell_command:
+  elektrihind_uuenda: >-
+    sh -c 'cd /config && B=https://raw.githubusercontent.com/Janek432/elektrihind-ha/v{{ versioon }}
+    && curl -fsSL "$B/packages/elektrihind.yaml" -o packages/elektrihind.yaml.uus
+    && curl -fsSL "$B/custom_templates/elektrihind.jinja" -o custom_templates/elektrihind.jinja.uus
+    && curl -fsSL "$B/www/elektrihind-card.js" -o www/elektrihind-card.js.uus
+    && mv packages/elektrihind.yaml.uus packages/elektrihind.yaml
+    && mv custom_templates/elektrihind.jinja.uus custom_templates/elektrihind.jinja
+    && mv www/elektrihind-card.js.uus www/elektrihind-card.js'
+
+script:
+  elektrihind_uuenda:
+    alias: "Elektrihind: uuenda GitHubist"
+    icon: mdi:update
+    mode: single
+    fields:
+      versioon:
+        description: "Versioon, nt 2.3.0 (vaikimisi uusim)"
+        example: "2.3.0"
+    sequence:
+      - variables:
+          v: "{{ versioon | default(states('sensor.elektrihind_uusim_versioon'), true) }}"
+      - condition: template
+        value_template: '{{ v is match("^[0-9]+[.][0-9]+[.][0-9]+$") }}'
+      - action: shell_command.elektrihind_uuenda
+        data:
+          versioon: "{{ v }}"
+        response_variable: tulemus
+      - if: "{{ tulemus.returncode == 0 }}"
+        then:
+          - action: persistent_notification.create
+            data:
+              notification_id: elektrihind_uuendus
+              title: "Elektrihind uuendatud"
+              message: "Versioon {{ v }} on paigaldatud. Värskenda brauserit (Ctrl+F5)."
+          - if: "{{ state_attr('sensor.elektrihind_uusim_versioon', 'taaskaivitus') == true }}"
+            then:
+              - action: homeassistant.restart
+            else:
+              - action: homeassistant.reload_custom_templates
+              - action: homeassistant.reload_all
+        else:
+          - action: persistent_notification.create
+            data:
+              notification_id: elektrihind_uuendus
+              title: "Elektrihinna uuendus ebaõnnestus"
+              message: "Viga {{ tulemus.returncode }}: {{ tulemus.stderr | default('') }}"
+
+# Suured nimekirjad ei lähe andmebaasi (praegune hind läheb, ajalugu säilib)
+recorder:
+  exclude:
+    entities:
+      - sensor.elektrihind_andmed
+      - sensor.elektrihind_tabel
+      - sensor.elektrihind_seaded
+      - sensor.elektrihind_reeglid
+      - sensor.elektrihind_juhtimine
+      - sensor.elektrihind_aku_seaded
+      - sensor.elektrihind_aku_plaan
+      - sensor.elektrihind_kasud
