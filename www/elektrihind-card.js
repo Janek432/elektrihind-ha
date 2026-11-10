@@ -11,9 +11,23 @@
  *    vaade: 15min                       # 15min | tund (algvaade)
  * ===================================================================== */
 
-const EH_VERSION = "2.6.0";
+const EH_VERSION = "2.7.0";
 const EH_PAEVAD = ["E", "T", "K", "N", "R", "L", "P", "Püha"];
-const EH_SOOVITUSED = ["#00FFFF", "#0078FF", "#B400B4", "#00FF00", "#FFFF00", "#FF8000", "#FF0000", "#FFFFFF", "#808080"];
+const EH_MAX_VARVE = 16;
+// palett: 12 tooni × 3 heledust + hallid (HSL -> #RRGGBB)
+const EH_PALETT = (() => {
+  const hex = (h, s, l) => {
+    s /= 100; l /= 100;
+    const k = (n) => (n + h / 30) % 12, a = s * Math.min(l, 1 - l);
+    const f = (n) => Math.round(255 * (l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1))));
+    return "#" + [f(0), f(8), f(4)].map((x) => x.toString(16).padStart(2, "0")).join("").toUpperCase();
+  };
+  const toonid = [0, 25, 45, 60, 90, 130, 165, 185, 210, 240, 275, 310];
+  const out = [];
+  for (const [s, l] of [[100, 50], [90, 70], [80, 32]]) for (const h of toonid) out.push(hex(h, s, l));
+  return out.concat(["#FFFFFF", "#D0D0D0", "#A0A0A0", "#707070", "#404040", "#000000",
+    "#00FFFF", "#0078FF", "#B400B4", "#00FF00", "#FFFF00", "#FF8000"]);
+})();
 
 class ElektrihindCard extends HTMLElement {
   setConfig(config) {
@@ -337,13 +351,19 @@ class ElektrihindCard extends HTMLElement {
 
     const varvid = S.varvid.map((c, i) => `
       <div class="vr">
-        <input type="color" list="eh-soovitused" data-varv="${i}" value="${this._esc(c)}">
+        <input type="color" data-varv="${i}" value="${this._esc(c)}" title="Kõik värvid">
+        <input type="text" class="hex" data-hex="${i}" value="${this._esc(c)}" maxlength="7" spellcheck="false"
+          aria-label="Värvikood">
+        <button class="pal ${this._palett === i ? "on" : ""}" data-palett="${i}" title="Palett" aria-label="Palett">▾</button>
         ${i < n - 1
           ? `<span>kuni</span><input type="text" inputmode="decimal" class="summa" data-piir="${i}" value="${S.piirid[i]}">`
           : `<span>${S.piirid[n - 2]} ja üle selle</span>`}
         <span class="tyhik"></span>
         ${n > 2 ? `<button class="d" data-kustutavarv="${i}" aria-label="Eemalda värv">✕</button>` : ""}
-      </div>`).join("");
+      </div>
+      ${this._palett === i ? `<div class="palett">${EH_PALETT.map((p) =>
+        `<button class="tk" data-vali="${i}" data-c="${p}" style="background:${p}" title="${p}"
+          aria-label="${p}"></button>`).join("")}</div>` : ""}`).join("");
 
     const tasud = S.tasud.map((t, i) => `
       <div class="kast ${t.on ? "" : "off"}">
@@ -387,8 +407,8 @@ class ElektrihindCard extends HTMLElement {
 
       <div class="kast"><h3>Värvid <small>(lõpphind, s/kWh)</small></h3>
         ${varvid}
-        ${n < 8 ? `<div class="rida"><button data-lisavarv>+ Lisa värv</button></div>` : ""}
-        <datalist id="eh-soovitused">${EH_SOOVITUSED.map((c) => `<option value="${c}">`).join("")}</datalist>
+        ${n < EH_MAX_VARVE ? `<div class="rida"><button data-lisavarv>+ Lisa värv</button>
+          <small>${n} / ${EH_MAX_VARVE}</small></div>` : ""}
       </div>
 
       <h3>Tasud <small>(senti/kWh)</small></h3>
@@ -438,10 +458,28 @@ class ElektrihindCard extends HTMLElement {
         uuendaPraegu();
       }));
     root.querySelectorAll("[data-varv]").forEach((el) => {
-      const f = () => { S.varvid[+el.dataset.varv] = el.value.toUpperCase(); uuendaPraegu(); };
+      const f = () => {
+        const i = +el.dataset.varv;
+        S.varvid[i] = el.value.toUpperCase();
+        const h = root.querySelector(`[data-hex="${i}"]`);
+        if (h) h.value = S.varvid[i];
+        uuendaPraegu();
+      };
       el.addEventListener("input", f);
       el.addEventListener("change", f);
     });
+    root.querySelectorAll("[data-hex]").forEach((el) => el.addEventListener("input", () => {
+      let v = el.value.trim().toUpperCase();
+      if (/^[0-9A-F]{6}$/.test(v)) v = "#" + v;
+      const ok = /^#[0-9A-F]{6}$/.test(v);
+      el.classList.toggle("vigane", !ok);
+      if (!ok) return;
+      const i = +el.dataset.hex;
+      S.varvid[i] = v;
+      const c = root.querySelector(`[data-varv="${i}"]`);
+      if (c) c.value = v.toLowerCase();
+      uuendaPraegu();
+    }));
     root.querySelectorAll("[data-piir]").forEach((el) =>
       el.addEventListener("input", () => {
         S.piirid[+el.dataset.piir] = el.value;
@@ -460,8 +498,18 @@ class ElektrihindCard extends HTMLElement {
       this._renderSeaded();
     });
     on("[data-kustuta]", (b) => { S.tasud.splice(+b.dataset.kustuta, 1); this._renderSeaded(); });
+    on("[data-palett]", (b) => {
+      const i = +b.dataset.palett;
+      this._palett = this._palett === i ? null : i;
+      this._renderSeaded();
+    });
+    on("[data-vali]", (b) => {
+      S.varvid[+b.dataset.vali] = b.dataset.c;
+      this._palett = null;
+      this._renderSeaded();
+    });
     on("[data-lisavarv]", () => {
-      if (S.varvid.length >= 8) return;
+      if (S.varvid.length >= EH_MAX_VARVE) return;
       const v = this._nr(S.piirid[S.piirid.length - 1]);
       S.piirid.push(isNaN(v) ? 30 : Math.round((v + 5) * 100) / 100);
       S.varvid.push("#808080");
@@ -484,14 +532,20 @@ class ElektrihindCard extends HTMLElement {
   // Kontroll nagu Wemose jsonistSeaded()
   _kontrolli() {
     const S = this._S;
-    // telefoni värvivalija ei pruugi sündmust saata – loe väljadelt
+    // telefoni värvivalija ei pruugi sündmust saata – loe väljadelt (koodilahter on ülimuslik)
     this.shadowRoot.querySelectorAll("[data-varv]").forEach((el) => {
       S.varvid[+el.dataset.varv] = el.value.toUpperCase();
+    });
+    this.shadowRoot.querySelectorAll("[data-hex]").forEach((el) => {
+      let v = el.value.trim().toUpperCase();
+      if (/^[0-9A-F]{6}$/.test(v)) v = "#" + v;
+      if (/^#[0-9A-F]{6}$/.test(v)) S.varvid[+el.dataset.hex] = v;
+      else throw new Error(`Vigane värvikood: ${el.value}`);
     });
     const km = this._nr(S.km);
     if (isNaN(km) || km < 0 || km > 50) throw new Error("Käibemaksu % peab olema 0..50");
     const piirid = S.piirid.map((x) => this._nr(x));
-    if (S.varvid.length < 2 || S.varvid.length > 8) throw new Error("Värve peab olema 2 kuni 8");
+    if (S.varvid.length < 2 || S.varvid.length > EH_MAX_VARVE) throw new Error(`Värve peab olema 2 kuni ${EH_MAX_VARVE}`);
     if (piirid.length !== S.varvid.length - 1) throw new Error("Piire peab olema ühe võrra vähem kui värve");
     piirid.forEach((v, i) => {
       if (isNaN(v) || v < -100 || v > 500) throw new Error("Vigane värvipiir");
@@ -574,6 +628,13 @@ class ElektrihindCard extends HTMLElement {
       .vr { display: flex; align-items: center; gap: 8px; margin: 4px 0; font-size: 13px; color: var(--secondary-text-color); }
       .vr input[type=color] { width: 44px; height: 32px; padding: 0; border: 1px solid var(--divider-color);
         border-radius: 6px; background: none; }
+      .vr input.hex { width: 78px; font-family: monospace; text-transform: uppercase; }
+      .vr input.hex.vigane { border-color: var(--error-color, #db4437); }
+      .vr button.pal { padding: 4px 8px; }
+      .vr button.pal.on { background: var(--primary-color); color: var(--text-primary-color, #fff); }
+      .palett { display: grid; grid-template-columns: repeat(12, 1fr); gap: 4px; margin: 2px 0 10px 52px; max-width: 320px; }
+      .palett .tk { aspect-ratio: 1; padding: 0; border-radius: 4px; border: 1px solid var(--divider-color); cursor: pointer; }
+      .palett .tk:hover { outline: 2px solid var(--primary-text-color); }
       table { width: 100%; border-collapse: collapse; font-size: 14px; color: var(--primary-text-color); }
       td { padding: 2px 0; }
       td:last-child { text-align: right; font-variant-numeric: tabular-nums; }

@@ -1,7 +1,8 @@
 {
-  "versioon": "2.6.0",
+  "versioon": "2.7.0",
   "taaskaivitus": false,
   "muudatused": [
-    "Kellaajad seadmete vormis alati 24h vormingus (tund + minutid), brauseri keelest sõltumata"
+    "Hinnavärve (vahemikke) kuni 16 (enne 8)",
+    "Iga värvi juures palett (48 tooni), värvikoodi lahter (#RRGGBB) ja täispalett"
   ]
 }

@@ -1,5 +1,10 @@
 # Muudatused
 
+## 2.7.0 – 2026-11-10
+- Hinnakaardi seadetes võib olla kuni **16 värvi** (hinnavahemikku), enne 8.
+- Iga värvi juures: nupp **▾** avab 48 tooniga paleti, lahtrisse saab kirjutada värvikoodi (#RRGGBB),
+  värviruudule klõpsates avaneb täispalett.
+
 ## 2.6.0 – 2026-11-10
 - Seadmete vormis on kellaajad alati 24h vormingus: tund (00–23) ja minutid (00/15/30/45) rippmenüüst,
   brauseri keelest sõltumata (enne näitas ingliskeelne brauser AM/PM).

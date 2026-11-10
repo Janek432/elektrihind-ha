@@ -25,7 +25,7 @@ seadmete juhtimine hinna järgi ja aku laadimisplaan. Hinnaandmed tulevad avalik
 
 4. Profiilis lülita sisse **Advanced mode**. **Settings → Tools → YAML → Check configuration**,
    seejärel **Settings → System → Restart**.
-5. **Settings → Dashboards → ⋮ → Resources → Add resource**: `/local/elektrihind-card.js?v=2.6.0`,
+5. **Settings → Dashboards → ⋮ → Resources → Add resource**: `/local/elektrihind-card.js?v=2.7.0`,
    tüüp **JavaScript module**.
 6. Dashboardil **Edit → Add card → By card**, otsi „Elektrihind“ ja lisa kaardid.
 
