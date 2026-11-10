@@ -11,7 +11,7 @@
  *    vaade: 15min                       # 15min | tund (algvaade)
  * ===================================================================== */
 
-const EH_VERSION = "2.5.1";
+const EH_VERSION = "2.6.0";
 const EH_PAEVAD = ["E", "T", "K", "N", "R", "L", "P", "Püha"];
 const EH_SOOVITUSED = ["#00FFFF", "#0078FF", "#B400B4", "#00FF00", "#FFFF00", "#FF8000", "#FF0000", "#FFFFFF", "#808080"];
 
@@ -750,6 +750,27 @@ class ElektrihindSeadmedCard extends HTMLElement {
 
   getCardSize() { return 4; }
 
+  // 24h kellaaja valik: tund 00–23 ja minutid 00/15/30/45 (brauseri keelest sõltumata)
+  _kellValik(attrs, h) {
+    const m = Math.round((+h || 0) * 60) % 1440;
+    const hh = Math.floor(m / 60), mm = m % 60;
+    const tunnid = Array.from({ length: 24 }, (_, i) =>
+      `<option value="${i}" ${i === hh ? "selected" : ""}>${String(i).padStart(2, "0")}</option>`).join("");
+    const minutid = [0, 15, 30, 45].map((x) =>
+      `<option value="${x}" ${x === mm ? "selected" : ""}>${String(x).padStart(2, "0")}</option>`).join("");
+    return `<span class="kell2" ${attrs}><select data-osa="h" aria-label="tund">${tunnid}</select>:<select
+      data-osa="m" aria-label="minutid">${minutid}</select></span>`;
+  }
+
+  // kellaaja väärtus "HH:MM" nii valikust (kell2) kui tavalisest väljast
+  _kellVaartus(el) {
+    if (el.classList && el.classList.contains("kell2")) {
+      const h = el.querySelector('[data-osa="h"]').value, m = el.querySelector('[data-osa="m"]').value;
+      return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+    }
+    return el.value;
+  }
+
   // 16.25 -> "16:15", 24 -> "00:00"
   _hStr(h) {
     const m = Math.round((+h || 0) * 60) % 1440;
@@ -1032,8 +1053,8 @@ class ElektrihindSeadmedCard extends HTMLElement {
             ${r.odav.on ? `<div class="odavaknad">
               <label class="lyliti"><input type="checkbox" data-odav-terve ${this._terveO(r) ? "checked" : ""}> kogu ööpäev</label>
               ${this._terveO(r) ? "" : `${r.odav.aknad.map((w, i) => `<div class="kellarida">
-                <input type="time" step="900" data-odav-aken="${i}" data-k="al" value="${this._hStr(w.al)}"> –
-                <input type="time" step="900" data-odav-aken="${i}" data-k="kuni" value="${this._hStr(w.kuni)}">
+                ${this._kellValik(`data-odav-aken="${i}" data-k="al"`, w.al)} –
+                ${this._kellValik(`data-odav-aken="${i}" data-k="kuni"`, w.kuni)}
                 ${r.odav.aknad.length > 1 ? `<button class="d" data-odav-eemalda="${i}" aria-label="Eemalda vahemik">✕</button>` : ""}
               </div>`).join("")}
               <div class="kiir"><button data-odav-lisa>+ Lisa vahemik</button></div>`}
@@ -1057,10 +1078,10 @@ class ElektrihindSeadmedCard extends HTMLElement {
           : "Kellaaja vahemikud ja tööaeg igas vahemikus"}</b>
         ${r.viis !== "piir" ? `<div class="veerud"><span>algus</span><span>lõpp</span><span>töötab (tundi)</span><span>max s/kWh</span></div>` : ""}
         ${r.aknad.map((w, i) => `<div class="kellarida">
-          <input type="time" step="900" data-aken="${i}" data-k="al" value="${this._hStr(w.al)}"> –
-          <input type="time" step="900" data-aken="${i}" data-k="kuni" value="${this._hStr(w.kuni)}">
+          ${this._kellValik(`data-aken="${i}" data-k="al"`, w.al)} –
+          ${this._kellValik(`data-aken="${i}" data-k="kuni"`, w.kuni)}
           ${r.viis !== "piir" ? `<input type="number" class="tundi" min="0.25" max="24" step="0.25" data-aken="${i}" data-k="tunde"
-            value="${w.tunde}"> tundi
+            value="${w.tunde}" title="Töötab (tundi)">
             <input type="text" inputmode="decimal" class="tundi" data-aken="${i}" data-k="maks"
               value="${w.maks ?? ""}" placeholder="–" title="Vahemiku maksimumhind (tühi = piiranguta)">` : ""}
           ${r.aknad.length > 1 ? `<button class="d" data-eemalda="${i}" aria-label="Eemalda vahemik">✕</button>` : ""}
@@ -1086,8 +1107,8 @@ class ElektrihindSeadmedCard extends HTMLElement {
         </select></label>
       ${r.varu === "aeg" ? `<div class="vali varuaknad">
         ${r.varuaknad.map((w, i) => `<div class="kellarida">
-          <input type="time" step="900" data-varu="${i}" data-k="al" value="${this._hStr(w.al)}"> –
-          <input type="time" step="900" data-varu="${i}" data-k="kuni" value="${this._hStr(w.kuni)}">
+          ${this._kellValik(`data-varu="${i}" data-k="al"`, w.al)} –
+          ${this._kellValik(`data-varu="${i}" data-k="kuni"`, w.kuni)}
           ${r.varuaknad.length > 1 ? `<button class="d" data-varueemalda="${i}" aria-label="Eemalda vahemik">✕</button>` : ""}
         </div>`).join("")}
         <div class="kiir"><button data-varulisa>+ Lisa vahemik</button></div>
@@ -1115,13 +1136,13 @@ class ElektrihindSeadmedCard extends HTMLElement {
         const w = r.aknad[+el.dataset.aken];
         if (el.dataset.k === "tunde") w.tunde = el.value;
         else if (el.dataset.k === "maks") w.maks = el.value;
-        else w[el.dataset.k] = this._strH(el.value, el.dataset.k === "kuni");
+        else w[el.dataset.k] = this._strH(this._kellVaartus(el), el.dataset.k === "kuni");
       };
       el.addEventListener("input", f);
       el.addEventListener("change", f);
     });
     root.querySelectorAll("[data-varu]").forEach((el) => {
-      const f = () => { r.varuaknad[+el.dataset.varu][el.dataset.k] = this._strH(el.value, el.dataset.k === "kuni"); };
+      const f = () => { r.varuaknad[+el.dataset.varu][el.dataset.k] = this._strH(this._kellVaartus(el), el.dataset.k === "kuni"); };
       el.addEventListener("input", f);
       el.addEventListener("change", f);
     });
@@ -1140,7 +1161,7 @@ class ElektrihindSeadmedCard extends HTMLElement {
       this._renderVorm();
     });
     root.querySelectorAll("[data-odav-aken]").forEach((el) => {
-      const f = () => { r.odav.aknad[+el.dataset.odavAken][el.dataset.k] = this._strH(el.value, el.dataset.k === "kuni"); };
+      const f = () => { r.odav.aknad[+el.dataset.odavAken][el.dataset.k] = this._strH(this._kellVaartus(el), el.dataset.k === "kuni"); };
       el.addEventListener("input", f);
       el.addEventListener("change", f);
     });
@@ -1342,8 +1363,10 @@ class ElektrihindSeadmedCard extends HTMLElement {
       input[type=time] { background: var(--secondary-background-color, transparent); color: var(--primary-text-color);
         border: 1px solid var(--divider-color); border-radius: 6px; padding: 6px 6px; font: inherit; font-size: 14px; }
       .kellarida { margin-bottom: 6px; }
+      .kell2 { display: inline-flex; align-items: center; gap: 2px; }
+      .kell2 select { padding: 6px 2px; width: 48px; }
       .varuaknad { margin: -4px 0 12px 0; }
-      .kellarida input.tundi { width: 54px; }
+      input.tundi { width: 48px !important; }
       .kellarida { flex-wrap: wrap; }
       .mp { margin-top: 8px; color: var(--primary-text-color); }
       .mp input { width: 54px; }
@@ -1355,7 +1378,7 @@ class ElektrihindSeadmedCard extends HTMLElement {
       .vahemikud { border-top: 1px solid var(--divider-color); padding-top: 12px; }
       .vpealk { color: var(--primary-text-color); font-weight: 600; font-size: 14px; }
       .veerud { display: flex; gap: 6px; font-size: 11px; color: var(--secondary-text-color); }
-      .veerud span { width: 118px; } .veerud span:nth-child(3) { width: 96px; } .veerud span:last-child { width: auto; }
+      .veerud span { width: 122px; } .veerud span:nth-child(3) { width: 72px; } .veerud span:last-child { width: auto; }
       .teade { min-height: 18px; margin-top: 8px; font-size: 13px; }
       .teade.viga { color: var(--error-color, #db4437); }
     </style>`;

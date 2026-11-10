@@ -1,8 +1,7 @@
 {
-  "versioon": "2.5.1",
+  "versioon": "2.6.0",
   "taaskaivitus": false,
   "muudatused": [
-    "Hinnakaardi ⚙ seadetes versioon ja nupp „Kontrolli uuendusi“",
-    "Uuenduste kontroll GitHubi API kaudu – uus versioon on minuti jooksul näha"
+    "Kellaajad seadmete vormis alati 24h vormingus (tund + minutid), brauseri keelest sõltumata"
   ]
 }

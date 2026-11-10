@@ -1,5 +1,9 @@
 # Muudatused
 
+## 2.6.0 – 2026-11-10
+- Seadmete vormis on kellaajad alati 24h vormingus: tund (00–23) ja minutid (00/15/30/45) rippmenüüst,
+  brauseri keelest sõltumata (enne näitas ingliskeelne brauser AM/PM).
+
 ## 2.5.1 – 2026-11-10
 - Uuenduste kontroll GitHubi API kaudu: uus versioon on minuti jooksul näha
   (otselink hoidis haru `main` kuni 5 minutit vahemälus).
