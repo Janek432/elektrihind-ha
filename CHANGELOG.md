@@ -1,5 +1,9 @@
 # Muudatused
 
+## 2.4.0 – 2026-11-10
+- Seadmed, odavaim aeg: igal kellaaja vahemikul on oma **max s/kWh** lahter. Vahemikust ei kasutata
+  veerandtunde, mis on sellest kallimad. Üldine maksimumhind jääb alles – kehtivad mõlemad.
+
 ## 2.3.0 – 2026-11-10
 - Seadmed, odavaim aeg: lisavalik **„Lisaks alati sees, kui lõpphind on kuni X s/kWh“**.
   Seade on sees iga veerandtund, mil hind on piirist madalam või võrdne – lisaks odavaimale ajale.

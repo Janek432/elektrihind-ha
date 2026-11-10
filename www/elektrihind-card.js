@@ -11,7 +11,7 @@
  *    vaade: 15min                       # 15min | tund (algvaade)
  * ===================================================================== */
 
-const EH_VERSION = "2.3.0";
+const EH_VERSION = "2.4.0";
 const EH_PAEVAD = ["E", "T", "K", "N", "R", "L", "P", "Püha"];
 const EH_SOOVITUSED = ["#00FFFF", "#0078FF", "#B400B4", "#00FF00", "#FFFF00", "#FF8000", "#FF0000", "#FFFFFF", "#808080"];
 
@@ -847,7 +847,8 @@ class ElektrihindSeadmedCard extends HTMLElement {
         : `odavaim ${({ plokk: "järjestikune aeg", hajus: "aeg (hajutatult)",
             eelista: `aeg, järjest kui vahe ≤ ${r.vahe} s/kWh` +
               ((+r.minplokk || 1) > 1 ? `, tükid vähemalt ${this._tundeTekst((+r.minplokk) / 4).replace(" h", "")} h` : "") })[this._jaotus(r)]}: ` +
-          aknad.map((w) => `${this._tundeTekst(w.tunde)} ${aeg(w)}`).join(", ") +
+          aknad.map((w) => `${this._tundeTekst(w.tunde)} ${aeg(w)}` +
+            (typeof w.maks === "number" ? ` (max ${w.maks})` : "")).join(", ") +
           (typeof r.maks === "number" ? ` · mitte üle ${r.maks} s/kWh` : "") +
           (r.odav && r.odav.on ? ` · alati sees ≤ ${r.odav.piir} s/kWh` +
             ((r.odav.aknad || []).length && !(r.odav.aknad.length === 1 && r.odav.aknad[0].al === 0 && r.odav.aknad[0].kuni === 24)
@@ -1018,12 +1019,14 @@ class ElektrihindSeadmedCard extends HTMLElement {
       <div class="vali vahemikud ${r.viis === "piir" && this._terve(r) ? "peidus" : ""}"><b class="vpealk">${r.viis === "piir"
           ? "Kellaaja vahemikud, kus hinnapiir kehtib"
           : "Kellaaja vahemikud ja tööaeg igas vahemikus"}</b>
-        ${r.viis !== "piir" ? `<div class="veerud"><span>algus</span><span>lõpp</span><span>töötab (tundi)</span></div>` : ""}
+        ${r.viis !== "piir" ? `<div class="veerud"><span>algus</span><span>lõpp</span><span>töötab (tundi)</span><span>max s/kWh</span></div>` : ""}
         ${r.aknad.map((w, i) => `<div class="kellarida">
           <input type="time" step="900" data-aken="${i}" data-k="al" value="${this._hStr(w.al)}"> –
           <input type="time" step="900" data-aken="${i}" data-k="kuni" value="${this._hStr(w.kuni)}">
           ${r.viis !== "piir" ? `<input type="number" class="tundi" min="0.25" max="24" step="0.25" data-aken="${i}" data-k="tunde"
-            value="${w.tunde}"> tundi` : ""}
+            value="${w.tunde}"> tundi
+            <input type="text" inputmode="decimal" class="tundi" data-aken="${i}" data-k="maks"
+              value="${w.maks ?? ""}" placeholder="–" title="Vahemiku maksimumhind (tühi = piiranguta)">` : ""}
           ${r.aknad.length > 1 ? `<button class="d" data-eemalda="${i}" aria-label="Eemalda vahemik">✕</button>` : ""}
         </div>`).join("")}
         <div class="kiir"><button data-lisaaken>+ Lisa vahemik</button></div>
@@ -1075,6 +1078,7 @@ class ElektrihindSeadmedCard extends HTMLElement {
       const f = () => {
         const w = r.aknad[+el.dataset.aken];
         if (el.dataset.k === "tunde") w.tunde = el.value;
+        else if (el.dataset.k === "maks") w.maks = el.value;
         else w[el.dataset.k] = this._strH(el.value, el.dataset.k === "kuni");
       };
       el.addEventListener("input", f);
@@ -1156,7 +1160,9 @@ class ElektrihindSeadmedCard extends HTMLElement {
         kasitsi_h: parseFloat(String(r.kasitsi_h ?? 2).replace(",", ".")),
         ...(r.varu === "aeg" ? { varuaknad: r.varuaknad.map((w) => ({ al: +w.al, kuni: +w.kuni })) } : {}),
         aknad: r.aknad.map((w) => ({ al: +w.al, kuni: +w.kuni,
-          ...(r.viis === "piir" ? {} : { tunde: parseFloat(String(w.tunde).replace(",", ".")) }) })) };
+          ...(r.viis === "piir" ? {} : { tunde: parseFloat(String(w.tunde).replace(",", ".")) }),
+          ...(r.viis !== "piir" && String(w.maks ?? "").trim() !== ""
+            ? { maks: parseFloat(String(w.maks).replace(",", ".")) } : {}) })) };
       if (r.viis === "piir") {
         puhas.piir = parseFloat(String(r.piir).replace(",", "."));
         const mt = parseFloat(String(r.mintunde || 0).replace(",", "."));
@@ -1214,6 +1220,10 @@ class ElektrihindSeadmedCard extends HTMLElement {
       if (r.viis !== "piir") {
         const n = parseFloat(String(w.tunde).replace(",", "."));
         if (isNaN(n) || n <= 0 || n > 24 || (n * 4) % 1) return "Tundide arv peab olema 0,25 kuni 24 (veerandtunni sammuga)";
+        if (String(w.maks ?? "").trim() !== "") {
+          const mx = parseFloat(String(w.maks).replace(",", "."));
+          if (isNaN(mx) || mx < -100 || mx > 500) return "Vahemiku maksimumhind peab olema arv (s/kWh) või tühi";
+        }
       }
     }
     if (r.viis !== "piir" && r.jaotus === "eelista") {
@@ -1298,7 +1308,7 @@ class ElektrihindSeadmedCard extends HTMLElement {
       .kellarida { margin-bottom: 6px; }
       .varuaknad { margin: -4px 0 12px 0; }
       .kellarida input.tundi { width: 54px; }
-      .kellarida { flex-wrap: nowrap; }
+      .kellarida { flex-wrap: wrap; }
       .mp { margin-top: 8px; color: var(--primary-text-color); }
       .mp input { width: 54px; }
       .odav { margin-top: 12px; color: var(--primary-text-color); }
@@ -1309,7 +1319,7 @@ class ElektrihindSeadmedCard extends HTMLElement {
       .vahemikud { border-top: 1px solid var(--divider-color); padding-top: 12px; }
       .vpealk { color: var(--primary-text-color); font-weight: 600; font-size: 14px; }
       .veerud { display: flex; gap: 6px; font-size: 11px; color: var(--secondary-text-color); }
-      .veerud span { width: 118px; } .veerud span:last-child { width: auto; }
+      .veerud span { width: 118px; } .veerud span:nth-child(3) { width: 96px; } .veerud span:last-child { width: auto; }
       .teade { min-height: 18px; margin-top: 8px; font-size: 13px; }
       .teade.viga { color: var(--error-color, #db4437); }
     </style>`;

@@ -129,6 +129,7 @@
       "mintunde": N (piir: vähemalt N tundi igas vahemikus – kui piirist allapoole
                      jääb vähem, lisatakse odavaimad veerandtunnid),
       "maks": X   (odavad: valitud ajast jäetakse välja veerandtunnid, mis on kallimad kui X),
+                  aknad[].maks: sama, aga ainult selle vahemiku kohta (mõlemad kehtivad),
       "odav": {"on", "piir": X, "aknad": [{"al", "kuni"}]}  (odavad: lisaks alati sees, kui
                   lõpphind <= X, ainult nendes kellaaja vahemikes; vaikimisi kogu ööpäev),
       "varu": "oo"|"aeg"|"sees"|"valjas"  (kui hinnad puuduvad: öötariifi ajal /
@@ -215,10 +216,11 @@
       {%- endfor -%}
     {%- else -%}
       {%- set k = ((w.tunde | float(0)) * 4) | round | int -%}
+      {%- set wv = namespace(ts=[]) -%}
       {%- for aken in a.l | map(attribute='aken') | unique | list if k > 0 -%}
         {%- set s = a.l | selectattr('aken', 'eq', aken) | sort(attribute='ts') | list -%}
         {%- if s | count <= k -%}
-          {%- set sees.ts = sees.ts + (s | map(attribute='ts') | list) -%}
+          {%- set wv.ts = wv.ts + (s | map(attribute='ts') | list) -%}
         {%- else -%}
           {%- set hajus = (s | sort(attribute='hind'))[:k] -%}
           {%- if jaotus == 'eelista' and (r.minplokk | default(1) | int(1)) > 1 -%}
@@ -229,7 +231,7 @@
             {%- set hajus = t2.l -%}
           {%- endif -%}
           {%- if jaotus == 'hajus' -%}
-            {%- set sees.ts = sees.ts + (hajus | map(attribute='ts') | list) -%}
+            {%- set wv.ts = wv.ts + (hajus | map(attribute='ts') | list) -%}
           {%- else -%}
             {#- odavaim järjestikune k veerandtunni plokk -#}
             {%- set h = s | map(attribute='hind') | list -%}
@@ -240,13 +242,19 @@
             {%- endfor -%}
             {%- set lisa = (b.v - (hajus | map(attribute='hind') | sum)) / k -%}
             {%- if jaotus == 'plokk' or lisa <= r.vahe | float(0) -%}
-              {%- set sees.ts = sees.ts + (s[b.i:b.i + k] | map(attribute='ts') | list) -%}
+              {%- set wv.ts = wv.ts + (s[b.i:b.i + k] | map(attribute='ts') | list) -%}
             {%- else -%}
-              {%- set sees.ts = sees.ts + (hajus | map(attribute='ts') | list) -%}
+              {%- set wv.ts = wv.ts + (hajus | map(attribute='ts') | list) -%}
             {%- endif -%}
           {%- endif -%}
         {%- endif -%}
       {%- endfor -%}
+      {#- vahemiku oma maksimumhind: kallimaid veerandtunde sellest vahemikust ei kasutata -#}
+      {%- if w.maks is defined and w.maks is number -%}
+        {%- set wv.ts = read | selectattr('ts', 'in', wv.ts) | selectattr('hind', 'le', w.maks)
+                             | map(attribute='ts') | list -%}
+      {%- endif -%}
+      {%- set sees.ts = sees.ts + wv.ts -%}
     {%- endif -%}
   {%- endfor -%}
   {%- set ts = sees.ts | unique | sort -%}

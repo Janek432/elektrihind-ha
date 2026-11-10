@@ -1,8 +1,7 @@
 {
-  "versioon": "2.3.0",
+  "versioon": "2.4.0",
   "taaskaivitus": false,
   "muudatused": [
-    "Odavaim aeg: lisavalik „alati sees, kui lõpphind on kuni X s/kWh“",
-    "Lisavalikul on oma kellaaja vahemikud (kogu ööpäev või mitu vahemikku)"
+    "Odavaim aeg: igal kellaaja vahemikul oma maksimumhind (üldine maksimumhind jääb alles)"
   ]
 }
