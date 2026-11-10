@@ -2,7 +2,7 @@
 
 ## 2.2.0 – 2026-11-10
 - Uuendused GitHubist: hinnakaardil ilmub riba „Uuendus saadaval“ ja nupp **Uuenda**
-  (laeb alla täpselt selle versiooni failid, laadib HA seaded uuesti, värskendab kaardi).
+  (laeb alla täpselt selle versiooni failid harust `versioon-X.Y.Z`, laadib HA seaded uuesti, värskendab kaardi).
 - Seadmed: käsitsi menüü – Sees 30 min / 1 h / 2 h / 3 h, Väljas 1 h / 3 h / 6 h / kuni keskööni / kuni homme õhtuni.
 - Seadmed: kui seadet lülitatakse ise (Home Assistantis või seadme nupust), ei puuduta automaatika
   seda valitud arv tunde (vaikimisi 2 h). Kaardil on näha, kui kaua automaatika ootab.

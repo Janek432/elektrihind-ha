@@ -34,7 +34,7 @@ seadmete juhtimine hinna järgi ja aku laadimisplaan. Hinnaandmed tulevad avalik
 Home Assistant kontrollib iga 6 tunni järel faili `version.json`. Kui siin on uuem versioon, ilmub
 hinnakaardile riba **„Uuendus saadaval“** koos muudatustega. Nupp **Uuenda** (ainult administraatorile):
 
-1. laeb alla täpselt selle versiooni sildi (`v2.3.0` jne) kolm faili,
+1. laeb alla täpselt selle versiooni haru (`versioon-2.3.0` jne) kolm faili,
 2. laadib Home Assistanti mallid ja YAML-i uuesti (või taaskäivitab, kui versioon seda nõuab),
 3. uuendab dashboardi ressursi versiooninumbrit ja värskendab lehte.
 
@@ -47,10 +47,11 @@ Käsitsi: **Settings → Automations & scenes → Scripts → „Elektrihind: uu
 1. Muuda faile, tõsta versiooni **kolmes kohas**: `version.json`, `packages/elektrihind.yaml`
    (`sensor.elektrihind_versioon` ja päis) ning `www/elektrihind-card.js` (`EH_VERSION`).
 2. Kui pakett vajab taaskäivitust (nt uus `shell_command` või `rest` allikas), pane `version.json`-is `"taaskaivitus": true`.
-3. Commit, silt `vX.Y.Z` ja push (silt enne `main`-i, sest HA laeb failid sildi järgi):
+3. Commit ja push: kõigepealt versiooni haru, siis `main` (HA laeb failid versiooni haru järgi,
+   `main`-i `version.json` annab teada, et uus versioon on olemas):
 
    ```sh
-   git tag v2.3.0 && git push origin v2.3.0 && git push origin main
+   git push origin HEAD:refs/heads/versioon-2.3.0 && git push origin main
    ```
 
 ## Kaardid

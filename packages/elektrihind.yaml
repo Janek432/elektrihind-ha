@@ -379,10 +379,10 @@ automation:
                         entity: "{{ repeat.item.entity }}"
                         sees: "{{ soov }}"
 
-# 10) Uuendamine GitHubist: laeb alla täpselt valitud versiooni (sildi v<versioon>) failid
+# 10) Uuendamine GitHubist: laeb alla täpselt valitud versiooni (haru versioon-<versioon>) failid
 shell_command:
   elektrihind_uuenda: >-
-    sh -c 'cd /config && B=https://raw.githubusercontent.com/Janek432/elektrihind-ha/v{{ versioon }}
+    sh -c 'cd /config && B=https://raw.githubusercontent.com/Janek432/elektrihind-ha/versioon-{{ versioon }}
     && curl -fsSL "$B/packages/elektrihind.yaml" -o packages/elektrihind.yaml.uus
     && curl -fsSL "$B/custom_templates/elektrihind.jinja" -o custom_templates/elektrihind.jinja.uus
     && curl -fsSL "$B/www/elektrihind-card.js" -o www/elektrihind-card.js.uus
