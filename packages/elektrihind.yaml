@@ -1,5 +1,5 @@
 # =====================================================================
-#  Elektrihind – Home Assistanti pakett            versioon 2.5.0
+#  Elektrihind – Home Assistanti pakett            versioon 2.5.1
 #  https://github.com/Janek432/elektrihind-ha
 #  Hinnad: janek432.github.io/elektrihind (sama fail mis Android-äpil)
 #  Tasud ja arvutus: /config/custom_templates/elektrihind.jinja
@@ -8,8 +8,11 @@
 # 1) Toorandmed GitHub Pagesist (börsihind €/MWh, 15 min, täna + homme)
 #    + uusima versiooni kontroll GitHubist (iga 6 h)
 rest:
-  # ?t= möödub GitHubi vahemälust, et uus versioon oleks kohe näha
-  - resource_template: "https://raw.githubusercontent.com/Janek432/elektrihind-ha/main/version.json?t={{ now().timestamp() | int }}"
+  # GitHubi API (vahemälu 60 s), et uus versioon oleks kohe näha
+  - resource: https://api.github.com/repos/Janek432/elektrihind-ha/contents/version.json?ref=main
+    headers:
+      Accept: application/vnd.github.raw+json
+      User-Agent: HomeAssistant-elektrihind
     scan_interval: 21600
     timeout: 20
     sensor:
@@ -38,7 +41,7 @@ template:
       - name: "Elektrihind versioon"
         unique_id: elektrihind_versioon
         icon: mdi:tag
-        state: "2.5.0"
+        state: "2.5.1"
 
   # 0) Kaardilt salvestatud seaded (tasud, KM, värvid). Säilib taaskäivitusel.
   - triggers:

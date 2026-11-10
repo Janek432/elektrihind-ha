@@ -1,9 +1,12 @@
 # Muudatused
 
+## 2.5.1 – 2026-11-10
+- Uuenduste kontroll GitHubi API kaudu: uus versioon on minuti jooksul näha
+  (otselink hoidis haru `main` kuni 5 minutit vahemälus).
+
 ## 2.5.0 – 2026-11-10
 - Hinnakaardi ⚙ seadete ülaosas on paigaldatud versioon, nupp **Kontrolli uuendusi** ja
   (kui uuem on olemas) **Uuenda**.
-- Uuenduste kontroll möödub GitHubi vahemälust, uus versioon on kohe näha.
 
 ## 2.4.0 – 2026-11-10
 - Seadmed, odavaim aeg: igal kellaaja vahemikul on oma **max s/kWh** lahter. Vahemikust ei kasutata
