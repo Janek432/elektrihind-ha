@@ -25,7 +25,7 @@ seadmete juhtimine hinna järgi ja aku laadimisplaan. Hinnaandmed tulevad avalik
 
 4. Profiilis lülita sisse **Advanced mode**. **Settings → Tools → YAML → Check configuration**,
    seejärel **Settings → System → Restart**.
-5. **Settings → Dashboards → ⋮ → Resources → Add resource**: `/local/elektrihind-card.js?v=2.2.0`,
+5. **Settings → Dashboards → ⋮ → Resources → Add resource**: `/local/elektrihind-card.js?v=2.3.0`,
    tüüp **JavaScript module**.
 6. Dashboardil **Edit → Add card → By card**, otsi „Elektrihind“ ja lisa kaardid.
 
@@ -80,7 +80,7 @@ Järjekord: ise lülitatud seade (ootab valitud tunnid) → käsitsi kaardilt (S
 
 - **Odavaim aeg** – igas kellaaja vahemikus N tundi kõige odavamat aega (veerandtunni täpsusega):
   alati plokina / eelista plokki (lubatud keskmise hinna vahe X, muidu tükid vähemalt M veerandtundi) /
-  hajutatult. Valikuline maksimumhind.
+  hajutatult. Valikuline maksimumhind. Valikuliselt lisaks alati sees, kui hind ≤ X (oma kellaaja vahemikes).
 - **Hinnapiir** – sees, kui lõpphind ≤ X; valikuliselt vähemalt N tundi ööpäevas/vahemikus; kogu ööpäev või vahemikud.
 - **Varuplaan** – kui hinnad puuduvad: öötariifi ajal (22–07, L–P) / valitud kellaaegadel (mitu vahemikku) / alati sees / väljas.
 

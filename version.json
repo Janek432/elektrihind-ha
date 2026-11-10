@@ -1,9 +1,8 @@
 {
-  "versioon": "2.2.0",
+  "versioon": "2.3.0",
   "taaskaivitus": false,
   "muudatused": [
-    "Esimene GitHubi versioon: uuendused tulevad nüüd hinnakaardi nupuga",
-    "Käsitsi juhtimine: Sees 30 min – 3 h, Väljas 1 h – kuni homme õhtuni",
-    "Ise lülitatud seadet (HA-s või nupust) ei puututa valitud arv tunde"
+    "Odavaim aeg: lisavalik „alati sees, kui lõpphind on kuni X s/kWh“",
+    "Lisavalikul on oma kellaaja vahemikud (kogu ööpäev või mitu vahemikku)"
   ]
 }

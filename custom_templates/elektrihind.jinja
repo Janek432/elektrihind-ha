@@ -129,6 +129,8 @@
       "mintunde": N (piir: vähemalt N tundi igas vahemikus – kui piirist allapoole
                      jääb vähem, lisatakse odavaimad veerandtunnid),
       "maks": X   (odavad: valitud ajast jäetakse välja veerandtunnid, mis on kallimad kui X),
+      "odav": {"on", "piir": X, "aknad": [{"al", "kuni"}]}  (odavad: lisaks alati sees, kui
+                  lõpphind <= X, ainult nendes kellaaja vahemikes; vaikimisi kogu ööpäev),
       "varu": "oo"|"aeg"|"sees"|"valjas"  (kui hinnad puuduvad: öötariifi ajal /
               "varuaknad" kellaaegadel [{"al", "kuni"}] / alati / mitte),
       "ule": {"tyyp": "sees"|"paus", "kuni": unix}  (käsitsi kaardilt, kuni ajani),
@@ -252,6 +254,22 @@
   {%- if r.viis != 'piir' and r.maks is defined and r.maks is number -%}
     {%- set ts = read | selectattr('ts', 'in', ts) | selectattr('hind', 'le', r.maks)
                       | map(attribute='ts') | list -%}
+  {%- endif -%}
+  {#- odavaim aeg: lisaks alati sees, kui lõpphind <= odav.piir (oma kellaaja vahemikes) -#}
+  {%- if r.viis != 'piir' and r.odav is mapping and r.odav.on | default(false) and r.odav.piir is number -%}
+    {%- set oa = r.odav.aknad | default([{'al': 0, 'kuni': 24}], true) -%}
+    {%- set o = namespace(ts=[]) -%}
+    {%- for x in read if x.hind <= r.odav.piir -%}
+      {%- set t = (x.algus[11:13] | int) * 60 + (x.algus[14:16] | int) -%}
+      {%- set lub = namespace(v=false) -%}
+      {%- for w in oa -%}
+        {%- set al = ((w.al | float(0)) * 60) | round | int -%}
+        {%- set ku = ((w.kuni | float(24)) * 60) | round | int -%}
+        {%- if (al < ku and t >= al and t < ku) or (al > ku and (t >= al or t < ku)) -%}{%- set lub.v = true -%}{%- endif -%}
+      {%- endfor -%}
+      {%- if lub.v -%}{%- set o.ts = o.ts + [x.ts] -%}{%- endif -%}
+    {%- endfor -%}
+    {%- set ts = (ts + o.ts) | unique | sort -%}
   {%- endif -%}
   {%- set ns.out = ns.out + [{
         'id': r.id, 'entity': r.entity, 'on': r.on | default(true), 'ts': ts,

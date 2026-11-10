@@ -1,5 +1,10 @@
 # Muudatused
 
+## 2.3.0 – 2026-11-10
+- Seadmed, odavaim aeg: lisavalik **„Lisaks alati sees, kui lõpphind on kuni X s/kWh“**.
+  Seade on sees iga veerandtund, mil hind on piirist madalam või võrdne – lisaks odavaimale ajale.
+- Lisavalikul on oma kellaaja vahemikud: kogu ööpäev või mitu vahemikku (nt boiler ainult 06–22).
+
 ## 2.2.0 – 2026-11-10
 - Uuendused GitHubist: hinnakaardil ilmub riba „Uuendus saadaval“ ja nupp **Uuenda**
   (laeb alla täpselt selle versiooni failid harust `versioon-X.Y.Z`, laadib HA seaded uuesti, värskendab kaardi).

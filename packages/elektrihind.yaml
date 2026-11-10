@@ -1,5 +1,5 @@
 # =====================================================================
-#  Elektrihind – Home Assistanti pakett            versioon 2.2.0
+#  Elektrihind – Home Assistanti pakett            versioon 2.3.0
 #  https://github.com/Janek432/elektrihind-ha
 #  Hinnad: janek432.github.io/elektrihind (sama fail mis Android-äpil)
 #  Tasud ja arvutus: /config/custom_templates/elektrihind.jinja
@@ -37,7 +37,7 @@ template:
       - name: "Elektrihind versioon"
         unique_id: elektrihind_versioon
         icon: mdi:tag
-        state: "2.2.0"
+        state: "2.3.0"
 
   # 0) Kaardilt salvestatud seaded (tasud, KM, värvid). Säilib taaskäivitusel.
   - triggers:

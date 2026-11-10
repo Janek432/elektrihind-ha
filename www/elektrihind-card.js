@@ -11,7 +11,7 @@
  *    vaade: 15min                       # 15min | tund (algvaade)
  * ===================================================================== */
 
-const EH_VERSION = "2.2.0";
+const EH_VERSION = "2.3.0";
 const EH_PAEVAD = ["E", "T", "K", "N", "R", "L", "P", "Püha"];
 const EH_SOOVITUSED = ["#00FFFF", "#0078FF", "#B400B4", "#00FF00", "#FFFF00", "#FF8000", "#FF0000", "#FFFFFF", "#808080"];
 
@@ -743,6 +743,11 @@ class ElektrihindSeadmedCard extends HTMLElement {
     return r.aknad.length === 1 && +r.aknad[0].al === 0 && +r.aknad[0].kuni === 24;
   }
 
+  _terveO(r) {
+    const a = (r.odav && r.odav.aknad) || [];
+    return a.length === 1 && +a[0].al === 0 && +a[0].kuni === 24;
+  }
+
   _jaotus(r) {
     return r.jaotus || (r.jarjest === false ? "hajus" : "plokk");
   }
@@ -843,7 +848,10 @@ class ElektrihindSeadmedCard extends HTMLElement {
             eelista: `aeg, järjest kui vahe ≤ ${r.vahe} s/kWh` +
               ((+r.minplokk || 1) > 1 ? `, tükid vähemalt ${this._tundeTekst((+r.minplokk) / 4).replace(" h", "")} h` : "") })[this._jaotus(r)]}: ` +
           aknad.map((w) => `${this._tundeTekst(w.tunde)} ${aeg(w)}`).join(", ") +
-          (typeof r.maks === "number" ? ` · mitte üle ${r.maks} s/kWh` : "");
+          (typeof r.maks === "number" ? ` · mitte üle ${r.maks} s/kWh` : "") +
+          (r.odav && r.odav.on ? ` · alati sees ≤ ${r.odav.piir} s/kWh` +
+            ((r.odav.aknad || []).length && !(r.odav.aknad.length === 1 && r.odav.aknad[0].al === 0 && r.odav.aknad[0].kuni === 24)
+              ? ` (${r.odav.aknad.map(aeg).join(", ")})` : "") : "");
       return `<div class="kirje ${r.on ? "" : "off"}">
         <div class="ylem">
           <div class="nimed"><b>${this._esc(r.nimi || this._nimi(r.entity))}</b>
@@ -882,6 +890,7 @@ class ElektrihindSeadmedCard extends HTMLElement {
     root.querySelector("[data-lisa]").addEventListener("click", () => {
       this._muuda = { idx: -1, r: { id: Math.random().toString(36).slice(2, 10), nimi: "", entity: "",
         on: true, viis: "odavad", jaotus: "eelista", vahe: 1, minplokk: 4, piir: 15, maks: "", mintunde: 0, kasitsi_h: 2,
+        odav: { on: false, piir: 5, aknad: [{ al: 0, kuni: 24 }] },
         varu: "oo", varuaknad: [{ al: 22, kuni: 7 }], aknad: [{ al: 0, kuni: 24, tunde: 2 }] } };
       this._renderVorm();
     });
@@ -890,6 +899,8 @@ class ElektrihindSeadmedCard extends HTMLElement {
       const vana = this._reeglid()[i];
       this._muuda = { idx: i, r: { piir: 15, vahe: 1, minplokk: 1, mintunde: 0, varu: "oo", kasitsi_h: 2, ...vana,
         maks: vana.maks ?? "", jaotus: this._jaotus(vana),
+        odav: JSON.parse(JSON.stringify({ on: false, piir: 5, ...(vana.odav || {}),
+          aknad: (vana.odav && vana.odav.aknad && vana.odav.aknad.length) ? vana.odav.aknad : [{ al: 0, kuni: 24 }] })),
         varuaknad: JSON.parse(JSON.stringify(vana.varuaknad && vana.varuaknad.length ? vana.varuaknad : [{ al: 22, kuni: 7 }])),
         aknad: JSON.parse(JSON.stringify(this._aknad(vana))) } };
       this._renderVorm();
@@ -977,6 +988,21 @@ class ElektrihindSeadmedCard extends HTMLElement {
             <span>Hajutatult <small>(alati kõige odavamad veerandtunnid, võivad olla eraldi)</small></span></label>
           <div class="mp">Maksimumhind: ≤ <input type="text" inputmode="decimal" data-v="maks" value="${r.maks}"
             placeholder="pole"> s/kWh <small>(kallimaid veerandtunde ei kasutata; tühi = piiranguta)</small></div>
+          <div class="odav">
+            <label class="lyliti"><input type="checkbox" data-odav-on ${r.odav.on ? "checked" : ""}>
+              <span>Lisaks alati sees, kui lõpphind on kuni
+              <input type="text" inputmode="decimal" data-odav-piir value="${r.odav.piir}"> s/kWh</span></label>
+            ${r.odav.on ? `<div class="odavaknad">
+              <label class="lyliti"><input type="checkbox" data-odav-terve ${this._terveO(r) ? "checked" : ""}> kogu ööpäev</label>
+              ${this._terveO(r) ? "" : `${r.odav.aknad.map((w, i) => `<div class="kellarida">
+                <input type="time" step="900" data-odav-aken="${i}" data-k="al" value="${this._hStr(w.al)}"> –
+                <input type="time" step="900" data-odav-aken="${i}" data-k="kuni" value="${this._hStr(w.kuni)}">
+                ${r.odav.aknad.length > 1 ? `<button class="d" data-odav-eemalda="${i}" aria-label="Eemalda vahemik">✕</button>` : ""}
+              </div>`).join("")}
+              <div class="kiir"><button data-odav-lisa>+ Lisa vahemik</button></div>`}
+              <small>Neil aegadel on seade sees iga veerandtund, mil hind on piirist madalam või võrdne –
+                lisaks ülal valitud odavaimale ajale.</small></div>` : ""}
+          </div>
         </div>
         <label class="valik"><input type="radio" name="viis" value="piir" ${r.viis === "piir" ? "checked" : ""}>
           <span><b>Hinnapiir</b><br><small>Seade on sees alati, kui lõpphind on piirist madalam või võrdne.</small></span></label>
@@ -1063,6 +1089,28 @@ class ElektrihindSeadmedCard extends HTMLElement {
       r.varuaknad.splice(+b.dataset.varueemalda, 1);
       this._renderVorm();
     }));
+    // ---- "alati sees, kui hind <= X" ----
+    const odavOn = root.querySelector("[data-odav-on]");
+    if (odavOn) odavOn.addEventListener("change", () => { r.odav.on = odavOn.checked; this._renderVorm(); });
+    const odavPiir = root.querySelector("[data-odav-piir]");
+    if (odavPiir) odavPiir.addEventListener("input", () => { r.odav.piir = odavPiir.value; });
+    const odavTerve = root.querySelector("[data-odav-terve]");
+    if (odavTerve) odavTerve.addEventListener("change", () => {
+      r.odav.aknad = odavTerve.checked ? [{ al: 0, kuni: 24 }] : [{ al: 6, kuni: 22 }];
+      this._renderVorm();
+    });
+    root.querySelectorAll("[data-odav-aken]").forEach((el) => {
+      const f = () => { r.odav.aknad[+el.dataset.odavAken][el.dataset.k] = this._strH(el.value, el.dataset.k === "kuni"); };
+      el.addEventListener("input", f);
+      el.addEventListener("change", f);
+    });
+    root.querySelectorAll("[data-odav-eemalda]").forEach((b) => b.addEventListener("click", () => {
+      r.odav.aknad.splice(+b.dataset.odavEemalda, 1);
+      this._renderVorm();
+    }));
+    const odavLisa = root.querySelector("[data-odav-lisa]");
+    if (odavLisa) odavLisa.addEventListener("click", () => { r.odav.aknad.push({ al: 6, kuni: 22 }); this._renderVorm(); });
+
     const varulisa = root.querySelector("[data-varulisa]");
     if (varulisa) varulisa.addEventListener("click", () => {
       r.varuaknad.push({ al: 13, kuni: 15 });
@@ -1117,6 +1165,8 @@ class ElektrihindSeadmedCard extends HTMLElement {
         puhas.jaotus = r.jaotus;
         const mx = String(r.maks ?? "").trim();
         if (mx !== "") puhas.maks = parseFloat(mx.replace(",", "."));
+        puhas.odav = { on: !!r.odav.on, piir: parseFloat(String(r.odav.piir).replace(",", ".")),
+          aknad: r.odav.aknad.map((w) => ({ al: +w.al, kuni: +w.kuni })) };
         if (r.jaotus === "eelista") {
           puhas.vahe = parseFloat(String(r.vahe).replace(",", "."));
           puhas.minplokk = parseInt(r.minplokk, 10);
@@ -1130,6 +1180,13 @@ class ElektrihindSeadmedCard extends HTMLElement {
 
   _kontrolli(r) {
     if (!r.entity) return "Vali seade";
+    if (r.viis !== "piir" && r.odav && r.odav.on) {
+      const v = parseFloat(String(r.odav.piir).replace(",", "."));
+      if (isNaN(v) || v < -100 || v > 500) return "„Alati sees“ hinnapiir peab olema arv (s/kWh)";
+      if (!r.odav.aknad.length) return "„Alati sees“ vajab vähemalt üht kellaaja vahemikku";
+      for (const w of r.odav.aknad) if (+w.al === +w.kuni && !(+w.al === 0 && +w.kuni === 24))
+        return "„Alati sees“ vahemiku algus ja lõpp ei tohi olla samad";
+    }
     if (r.viis !== "piir" && String(r.maks ?? "").trim() !== "") {
       const v = parseFloat(String(r.maks).replace(",", "."));
       if (isNaN(v) || v < -100 || v > 500) return "Maksimumhind peab olema arv (s/kWh) või tühi";
@@ -1244,6 +1301,10 @@ class ElektrihindSeadmedCard extends HTMLElement {
       .kellarida { flex-wrap: nowrap; }
       .mp { margin-top: 8px; color: var(--primary-text-color); }
       .mp input { width: 54px; }
+      .odav { margin-top: 12px; color: var(--primary-text-color); }
+      .odav .lyliti { align-items: flex-start; }
+      .odav input[type=text] { width: 54px; }
+      .odavaknad { margin: 6px 0 0 26px; display: grid; gap: 6px; }
       .terve { margin: 4px 0 12px 26px; color: var(--primary-text-color); }
       .vahemikud { border-top: 1px solid var(--divider-color); padding-top: 12px; }
       .vpealk { color: var(--primary-text-color); font-weight: 600; font-size: 14px; }
