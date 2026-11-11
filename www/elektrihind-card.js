@@ -11,7 +11,7 @@
  *    vaade: 15min                       # 15min | tund (algvaade)
  * ===================================================================== */
 
-const EH_VERSION = "2.7.0";
+const EH_VERSION = "2.8.0";
 const EH_PAEVAD = ["E", "T", "K", "N", "R", "L", "P", "Püha"];
 const EH_MAX_VARVE = 16;
 // palett: 12 tooni × 3 heledust + hallid (HSL -> #RRGGBB)

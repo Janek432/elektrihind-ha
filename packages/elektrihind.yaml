@@ -1,5 +1,5 @@
 # =====================================================================
-#  Elektrihind – Home Assistanti pakett            versioon 2.7.0
+#  Elektrihind – Home Assistanti pakett            versioon 2.8.0
 #  https://github.com/Janek432/elektrihind-ha
 #  Hinnad: janek432.github.io/elektrihind (sama fail mis Android-äpil)
 #  Tasud ja arvutus: /config/custom_templates/elektrihind.jinja
@@ -41,7 +41,7 @@ template:
       - name: "Elektrihind versioon"
         unique_id: elektrihind_versioon
         icon: mdi:tag
-        state: "2.7.0"
+        state: "2.8.0"
 
   # 0) Kaardilt salvestatud seaded (tasud, KM, värvid). Säilib taaskäivitusel.
   - triggers:
@@ -108,6 +108,18 @@ template:
       - trigger: state
         entity_id: sensor.elektrihind_tabel
     sensor:
+      # Sama lõpphind eurodes – Energy armatuurlaua kuluarvestuse jaoks (Grid consumption → hind)
+      - name: "Elektrihind EUR"
+        unique_id: elektrihind_eur
+        icon: mdi:currency-eur
+        unit_of_measurement: "EUR/kWh"
+        state_class: measurement
+        state: >
+          {% set t = now().timestamp() %}
+          {% set r = state_attr('sensor.elektrihind_tabel', 'hinnad') | default([], true)
+               | selectattr('ts', 'le', t) | list | last | default(none) %}
+          {{ (r.hind / 100) | round(5) if r is not none and r.ts + 900 > t else none }}
+
       - name: "Elektrihind"
         unique_id: elektrihind_praegu
         icon: mdi:flash

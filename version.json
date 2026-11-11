@@ -1,8 +1,7 @@
 {
-  "versioon": "2.7.0",
+  "versioon": "2.8.0",
   "taaskaivitus": false,
   "muudatused": [
-    "Hinnavärve (vahemikke) kuni 16 (enne 8)",
-    "Iga värvi juures palett (48 tooni), värvikoodi lahter (#RRGGBB) ja täispalett"
+    "Uus andur sensor.elektrihind_eur: lõpphind €/kWh Energy armatuurlaua kuluarvestuseks"
   ]
 }

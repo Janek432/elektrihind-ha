@@ -1,5 +1,9 @@
 # Muudatused
 
+## 2.8.0 – 2026-11-11
+- Uus andur **`sensor.elektrihind_eur`** – lõpphind (börs + tasud + KM) eurodes, ühik EUR/kWh.
+  Kasuta seda Energy armatuurlaual: Electricity grid → Grid consumption → „Use an entity with current price“.
+
 ## 2.7.0 – 2026-11-10
 - Hinnakaardi seadetes võib olla kuni **16 värvi** (hinnavahemikku), enne 8.
 - Iga värvi juures: nupp **▾** avab 48 tooniga paleti, lahtrisse saab kirjutada värvikoodi (#RRGGBB),

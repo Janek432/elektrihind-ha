@@ -25,7 +25,7 @@ seadmete juhtimine hinna järgi ja aku laadimisplaan. Hinnaandmed tulevad avalik
 
 4. Profiilis lülita sisse **Advanced mode**. **Settings → Tools → YAML → Check configuration**,
    seejärel **Settings → System → Restart**.
-5. **Settings → Dashboards → ⋮ → Resources → Add resource**: `/local/elektrihind-card.js?v=2.7.0`,
+5. **Settings → Dashboards → ⋮ → Resources → Add resource**: `/local/elektrihind-card.js?v=2.8.0`,
    tüüp **JavaScript module**.
 6. Dashboardil **Edit → Add card → By card**, otsi „Elektrihind“ ja lisa kaardid.
 
@@ -67,6 +67,7 @@ Käsitsi: **Settings → Automations & scenes → Scripts → „Elektrihind: uu
 | Olem | Sisu |
 | --- | --- |
 | `sensor.elektrihind` | praegune lõpphind s/kWh (+ börs, järgmine, min/max/keskmine) |
+| `sensor.elektrihind_eur` | sama lõpphind €/kWh (Energy armatuurlaua kuluarvestuseks) |
 | `sensor.elektrihind_tabel` | kõik veerandtunnid lõpphindadega (täna + homme) |
 | `sensor.elektrihind_seaded` | kaardilt salvestatud tasud ja värvid |
 | `sensor.elektrihind_reeglid` / `sensor.elektrihind_juhtimine` | seadmete reeglid / plaan |
